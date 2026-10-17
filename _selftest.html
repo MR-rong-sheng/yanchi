@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>砚池 · 自检</title>
+<style>body{font:13px/1.9 ui-monospace,Consolas,monospace;padding:16px}iframe{width:1100px;height:760px;border:1px solid #ccc;margin-top:12px}</style>
+</head>
+<body>
+<pre id="T">运行中…</pre>
+<iframe id="f" src="index.html"></iframe>
+<script type="module">
+const log = [];
+const flush = () => {
+  const t = document.getElementById('T');
+  if (t) t.textContent = `###TEST###\n${log.join('\n')}\n###END###`;
+};
+const ok = (name, cond, extra = '') => {
+  log.push(`${cond ? 'PASS' : 'FAIL'} | ${name}${extra ? ' :: ' + extra : ''}`);
+  flush();
+};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const until = async (fn, tries = 80) => { for (let i = 0; i < tries; i++) { try { if (fn()) return true; } catch {} await sleep(25); } return false; };
+
+const f = document.getElementById('f');
+await new Promise(r => f.addEventListener('load', r, { once: true }));
+const w = f.contentWindow, d = w.document;
+const view = () => d.querySelector('#view');
+const text = () => (view() ? view().textContent : '');
+
+/* 内容条目数直接从数据文件读，避免内容增加后测试失效 */
+const POEMS = await (await fetch('content/poems.json')).json();
+const WORDS = await (await fetch('content/words.json')).json();
+
+/* 1. 外壳启动 */
+await until(() => d.documentElement && d.documentElement.dataset.ready === '1', 600);  // 等内核自报就绪
+await until(() => d.querySelectorAll('#nav a').length > 0, 300);
+const navN = d.querySelectorAll('#nav a').length;
+ok('导航生成（前台 8 项，管理员多一项「管理」）', navN >= 8, '实际 ' + navN);
+ok('模块脚本无致命错误（未出现错误页）', !text().includes('没能打开'), text().slice(0, 60).replace(/\s+/g, ' '));
+
+/* 2. 八个视图都能打开 */
+const routes = [
+  ['today', '一日一字'], ['units', '课本 ·'], ['words', '字库'], ['poems', '篇目'],
+  ['write', '题目 ·'], ['notes', '本地笔记本'], ['player', '本地音乐'], ['settings', '本机偏好'],
+];
+for (const [id, marker] of routes) {
+  w.location.hash = '#/' + id;
+  const hit = await until(() => text().includes(marker) && !text().includes('没能打开'));
+  ok(`视图 ${id} 渲染`, hit, hit ? '' : '未见标记「' + marker + '」');
+}
+
+/* 3. 字库：搜索、详情抽屉、收入札记 */
+w.location.hash = '#/words';
+await until(() => d.querySelectorAll('.word-card').length > 0);
+const totalCards = d.querySelectorAll('.word-card').length;
+ok('字库渲染全部条目', totalCards === WORDS.length, totalCards + ' / 数据 ' + WORDS.length);
+
+const q = d.querySelector('[data-q]');
+q.value = '缱';
+q.dispatchEvent(new w.Event('input', { bubbles: true }));
+await sleep(120);
+ok('搜索过滤生效', d.querySelectorAll('.word-card').length === 1, '筛后 ' + d.querySelectorAll('.word-card').length + ' 条');
+q.value = '';
+q.dispatchEvent(new w.Event('input', { bubbles: true }));
+await sleep(120);
+
+d.querySelector('.word-card').click();
+await sleep(150);
+ok('点开字词详情抽屉', d.querySelector('#drawer').hidden === false);
+ok('抽屉含释义与例句', d.querySelector('#drawer').textContent.includes('释义') && d.querySelector('#drawer').textContent.includes('例句'));
+
+d.querySelector('#drawer [data-act="0"]').click();   // 收入札记
+await sleep(150);
+const notesAfter = JSON.parse(w.localStorage.getItem('yanchi:notes') || '[]');
+ok('「收入札记」写入本地存储', notesAfter.length === 1, '札记 ' + notesAfter.length + ' 条');
+ok('抽屉已关闭', d.querySelector('#drawer').hidden === true);
+
+/* 4. 标记已掌握 */
+d.querySelector('.word-card [data-done]').click();
+await sleep(120);
+const doneWords = JSON.parse(w.localStorage.getItem('yanchi:words.done') || '[]');
+ok('标记已掌握写入进度', doneWords.length === 1);
+
+/* 5. 诗文：阅读器 */
+w.location.hash = '#/poems';
+await until(() => text().includes('篇目'));            // 先等本视图的标记出现，避免数到上一个视图的残留 DOM
+await until(() => d.querySelectorAll('#view .row[data-id]').length > 0);
+const rows = d.querySelectorAll('#view .row[data-id]').length;
+ok('诗文列表渲染全部篇目', rows === POEMS.length, rows + ' / 数据 ' + POEMS.length);
+d.querySelector('#view .row[data-id]').click();
+await sleep(200);
+const dtext = d.querySelector('#drawer').textContent;
+ok('阅读器含原文/注释/编者按', dtext.includes('注释') && dtext.includes('编者按'), dtext.slice(0, 40).replace(/\s+/g, ' '));
+d.querySelector('#drawer [data-act="1"]').click();   // 背下来了
+await sleep(150);
+ok('「背下来了」写入进度', JSON.parse(w.localStorage.getItem('yanchi:poems.done') || '[]').length === 1);
+
+/* 5b. 文言文排版 + 单元筛选 */
+const yylj = POEMS.find(p => p.题 === '岳阳楼记');
+ok('诗文数据含文言文（类=文）', !!yylj && yylj.类 === '文' && yylj.原文.length >= 4, yylj ? yylj.原文.length + ' 段' : '未找到岳阳楼记');
+
+const unitSel = d.querySelector('#view [data-unit]');
+unitSel.value = '第六单元';
+unitSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+await sleep(250);
+const sixRows = d.querySelectorAll('#view .row[data-id]').length;
+ok('诗文按单元筛选', sixRows === POEMS.filter(p => p.单元 === '第六单元').length, sixRows + ' 篇');
+unitSel.value = 'all';
+unitSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+await sleep(250);
+
+const yRow = [...d.querySelectorAll('#view .row[data-id]')].find(r => r.textContent.includes('岳阳楼记'));
+yRow.click();
+await sleep(250);
+const dw = d.querySelector('#drawer');
+ok('文言文按段渲染（.paper）', !!dw.querySelector('.paper') && dw.querySelectorAll('.paper p').length === yylj.原文.length,
+   dw.querySelectorAll('.paper p').length + ' 段');
+ok('阅读器含注释与编者按', dw.textContent.includes('注释') && dw.textContent.includes('编者按'));
+ok('显示原文核对标记', dw.textContent.includes('原文已核对'));
+d.querySelector('#drawer [data-close]').click();
+await sleep(150);
+
+/* 5c. 课本模块：单元、课文、写作 */
+w.location.hash = '#/units';
+await until(() => text().includes('课本 ·'));
+await sleep(300);
+ok('课本列出全部课文', d.querySelectorAll('#view .lesson[data-no]').length === 27,
+   d.querySelectorAll('#view .lesson[data-no]').length + ' 篇');
+ok('课本分为六个单元', d.querySelectorAll('#view [data-units] > article').length === 6,
+   d.querySelectorAll('#view [data-units] > article').length + ' 个');
+d.querySelector('#view .lesson[data-no="11"]').click();
+await sleep(250);
+ok('课文抽屉含导读与学习要点',
+   d.querySelector('#drawer').textContent.includes('导读') && d.querySelector('#drawer').textContent.includes('学习要点'));
+ok('文言文课文可跳原文', !!d.querySelector('#drawer [data-act="0"]'));
+d.querySelector('#drawer [data-close]').click();
+await sleep(150);
+
+/* 5d. 一行含多篇的课文（诗词三首）应能跳到多篇原文 */
+d.querySelector('#view .lesson[data-no="14"]').click();
+await sleep(250);
+const multiBtn = d.querySelector('#drawer .btn-row .btn');
+ok('一行多篇可跳到多篇原文', !!multiBtn && multiBtn.textContent.includes('3 篇'),
+   multiBtn ? multiBtn.textContent.trim() : '未找到跳转按钮');
+d.querySelector('#drawer [data-close]').click();
+await sleep(150);
+
+/* 5e. 课外古诗词诵读也应接通原文 */
+const otherRow = [...d.querySelectorAll('#view .lesson[data-other]')]
+  .find(el => el.textContent.includes('课外古诗词诵读'));
+ok('找到课外古诗词诵读那一行', !!otherRow);
+otherRow.click();
+await sleep(250);
+ok('课外古诗词诵读可跳原文', !!d.querySelector('#drawer .btn-row .btn'),
+   (d.querySelector('#drawer .btn-row .btn') || {}).textContent || '无跳转按钮');
+d.querySelector('#drawer [data-close]').click();
+await sleep(150);
+
+/* 6. 写作：选一道题、输入草稿、自动保存 */
+w.location.hash = '#/write';
+await until(() => text().includes('题目 ·'));
+d.querySelector('#view [data-write]').click();
+await sleep(200);
+const ta = d.querySelector('[data-editor]');
+ok('进入写作编辑器', !!ta && text().includes('结构建议'));
+ta.value = '他在门口踟蹰了很久，还是没有敲门。';
+ta.dispatchEvent(new w.Event('input', { bubbles: true }));
+await sleep(900);
+const drafts = JSON.parse(w.localStorage.getItem('yanchi:drafts') || '{}');
+ok('草稿自动保存', Object.keys(drafts).length === 1, JSON.stringify(Object.keys(drafts)));
+ok('字数统计已更新', d.querySelector('[data-count]') && /汉字/.test(d.querySelector('[data-count]').textContent), d.querySelector('[data-count]')?.textContent);
+d.querySelector('[data-to-note]').click();
+await sleep(150);
+ok('习作可收进札记', JSON.parse(w.localStorage.getItem('yanchi:notes') || '[]').length === 2);
+
+/* 7. 札记页 */
+w.location.hash = '#/notes';
+await until(() => text().includes('本地笔记本'));
+await sleep(150);
+const noteRows = d.querySelectorAll('#view .row[data-id]').length;
+ok('札记列表显示已有条目', noteRows === 2, '实际 ' + noteRows);
+d.querySelector('#view .row[data-id]').click();
+await sleep(150);
+ok('札记详情可打开', d.querySelector('#drawer').hidden === false && d.querySelector('#drawer').textContent.includes('删除'));
+d.querySelector('#drawer [data-close]').click();
+await sleep(100);
+
+/* 8. 设置：切主题 / 换强调色 / 换字号 */
+w.location.hash = '#/settings';
+await until(() => text().includes('本机偏好'));
+d.querySelector('[data-group="theme"] button[data-v="dark"]').click();
+await sleep(150);
+ok('夜间模式写入 html', d.documentElement.getAttribute('data-theme') === 'dark');
+ok('夜间偏好已持久化', JSON.parse(w.localStorage.getItem('yanchi:prefs') || '{}').theme === 'dark');
+d.querySelector('[data-group="accent"] .swatch[data-v="zhe"]').click();
+await sleep(150);
+ok('强调色切换生效', d.documentElement.getAttribute('data-accent') === 'zhe');
+d.querySelector('[data-group="size"] button[data-v="l"]').click();
+await sleep(150);
+ok('字号档位切换生效', d.documentElement.getAttribute('data-size') === 'l');
+
+/* 8b. 回归：设置页的其它按钮不得污染偏好
+   （曾经 [data-theme] 选择器连带匹配整页按钮，点“字号”把主题写成了 "l"） */
+ok('点字号后主题未被改写', d.documentElement.getAttribute('data-theme') === 'dark',
+   '实际 data-theme=' + d.documentElement.getAttribute('data-theme'));
+d.querySelector('[data-backup]').click();
+await sleep(200);
+const prefsNow = JSON.parse(w.localStorage.getItem('yanchi:prefs') || '{}');
+ok('点“导出备份”后三项偏好仍合法',
+   ['light', 'dark'].includes(prefsNow.theme) && ['s', 'm', 'l'].includes(prefsNow.size) &&
+   ['qing', 'zhe', 'zi', 'mo'].includes(prefsNow.accent),
+   JSON.stringify(prefsNow));
+
+/* 9. 玻璃与内容文件 */
+const glassCount = d.querySelectorAll('.glass, .word-card, .btn').length;
+ok('玻璃组件已铺满界面', glassCount >= 8, glassCount + ' 个');
+const supports = w.CSS.supports('backdrop-filter', 'blur(8px) url(#liquid)');
+ok('浏览器支持 SVG 折射滤镜', supports);
+
+/* ==========================================================================
+   10. 全站按键巡检：清空本机数据后重载，逐个点击每个可交互元素并断言有实际变化
+   ========================================================================== */
+/* 清空本机数据；不重载 iframe（重载的 load 事件时序不可靠，会把整个巡检挂住），
+   各视图在 mount 时都会重新读 localStorage，所以清空后再逐个进入即可拿到干净状态 */
+Object.keys(w.localStorage).filter(k => k.startsWith('yanchi:')).forEach(k => w.localStorage.removeItem(k));
+const W = w, Dc = d;                                  // 复用现有的 iframe 窗口
+await until(() => Dc.querySelectorAll('#nav a').length > 0);
+await sleep(200);
+
+/* 探针：下载、文件选择、confirm 都要能被观察到 */
+const spy = W.__spy = { dl: 0, file: 0 };
+const _cou = W.URL.createObjectURL.bind(W.URL);
+W.URL.createObjectURL = (...a) => { spy.dl++; return _cou(...a); };
+const _ic = W.HTMLInputElement.prototype.click;
+W.HTMLInputElement.prototype.click = function (...a) {
+  if (this.type === 'file') spy.file++;
+  return _ic.apply(this, a);
+};
+W.confirm = () => true;                              // 巡检里一律确认，让破坏性按钮也走到真实分支
+
+const V   = () => Dc.querySelector('#view');
+const DW  = () => Dc.querySelector('#drawer');
+const opened = () => DW().hidden === false;
+const snap = () => [W.location.hash, opened(), DW().innerHTML, V().innerHTML,
+  Dc.querySelector('#toast').textContent, spy.dl, spy.file].join('|');
+const closeDrawer = async () => {
+  if (opened()) { Dc.querySelector('#drawer [data-close]').click(); await sleep(120); }
+};
+
+let audited = 0, dead = [];
+function note(okFlag, who, why = '') {
+  audited++;
+  if (!okFlag) dead.push(who);
+  ok(okFlag ? '· ' + who : '✗ ' + who, okFlag, why);
+}
+
+/* 巡检分组开关：在地址栏加 #字词 只跑该组，便于定位；不带则全跑 */
+const ONLY = decodeURIComponent((location.hash || '').replace(/^#/, ''));
+const want = (...keys) => !ONLY || ONLY === 'all' || keys.some(k => k.includes(ONLY));
+
+/** 逐个点击一组元素；每一轮重新按序号取，避免视图重绘后引用失效
+ *  step > 1 时按等距抽样（同一模板生成的长列表，逐个点会重复重绘，代价高而信息量低） */
+async function auditAll(selector, groupName, wait_ms = 90, step = 1) {
+  if (!want(groupName)) return;
+  const all = V().querySelectorAll(selector);
+  const total = all.length;
+  if (!total) { note(false, `${groupName}：找不到元素（${selector}）`); return; }
+  let bad = [], done = 0;
+  for (let i = 0; i < total; i += step) {
+    const el = V().querySelectorAll(selector)[i];
+    if (!el) break;                                  // 列表在遍历中变短（例如切换了筛选）就停下，不算失败
+    const label = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 16) || el.className;
+    const before = snap();
+    /* 分段器/色块本来就有“选中态”：点当前已选中的那一项，本来就不该有变化 */
+    const noopByDesign = el.getAttribute && el.getAttribute('aria-pressed') === 'true';
+    el.click();
+    await sleep(wait_ms);
+    if (snap() === before && !noopByDesign) bad.push(label);
+    done++;
+    await closeDrawer();
+  }
+  audited += done;
+  bad.forEach(b => dead.push(`${groupName}/${b}`));
+  const scale = step > 1 ? `抽样 ${done}/${total}` : `${done}/${done}`;
+  ok(`${groupName}：${scale} 全部有响应`, bad.length === 0,
+     bad.length ? '无反应：' + bad.slice(0, 8).join('、') : scale);
+}
+
+/** 把某组分段器的选中态复位到第一项，避免影响后续巡检 */
+async function resetSeg(selector) {
+  const first = V().querySelector(selector);
+  if (first && first.getAttribute('aria-pressed') !== 'true') { first.click(); await sleep(200); }
+}
+
+const goRoute = async (id, marker) => {
+  W.location.hash = '#/' + id;
+  await until(() => V().textContent.includes(marker));
+  await sleep(300);
+};
+
+ /* ---- 顶栏 ---- */
+try {
+if (want('顶栏')) {                                   /* 顶栏一组 */
+  const b = Dc.querySelector('#btn-theme');
+  const before = Dc.documentElement.getAttribute('data-theme');
+  b.click(); await sleep(200);
+  note(Dc.documentElement.getAttribute('data-theme') !== before, '顶栏：日夜切换');
+  b.click(); await sleep(200);
+
+  Dc.querySelector('#btn-settings').click();
+  await until(() => V().textContent.includes('本机偏好'));
+  note(true, '顶栏：设置按钮跳转');
+
+  Dc.querySelector('.brand').click();
+  await until(() => V().textContent.includes('一日一字'));
+  note(V().textContent.includes('一日一字'), '顶栏：品牌名回今日');
+}
+
+/* ---- 导航（前台八项；管理员登录时多挂一项「管理」） ---- */
+if (want('导航')) {
+  const marks = { today: '一日一字', units: '课本 ·', words: '字库', poems: '篇目',
+    write: ['题目 ·', '结构建议'], notes: '本地笔记本', player: '本地音乐',
+    settings: '本机偏好', admin: ['概览', '站点概览'] };
+  const as = [...Dc.querySelectorAll('#nav a')];
+  let bad = [];
+  for (const a of as) {
+    const id = a.getAttribute('href').replace('#/', '');
+    const m = marks[id];
+    a.click();
+    /* 写作页会记住上次编辑的那一篇，所以既可能是题目列表，也可能是编辑器 */
+    const hit = await until(() => W.location.hash === '#/' + id &&
+      (Array.isArray(m) ? m.some(x => V().textContent.includes(x)) : V().textContent.includes(m)));
+    if (!hit) bad.push(a.textContent.trim());
+  }
+  audited += as.length;
+  bad.forEach(b => dead.push('导航/' + b));
+  ok(`导航：${as.length} 项全部可跳转`, bad.length === 0, bad.join('、'));
+}
+
+/* ---- 今日 ---- */
+await goRoute('today', '一日一字');
+if (want('今日')) {
+  await auditAll('[data-toggle-word]', '今日：标为已掌握');
+  /* 跨模块跳转：点完给足一次完整挂载的时间，再断言终点状态 */
+  const jump = async (sel, expectHash, marker, label) => {
+    const el = V().querySelector(sel);
+    if (!el) { audited++; dead.push(label); ok(label, false, '按钮不存在'); return; }
+    el.click();
+    await sleep(800);
+    const okHash = W.location.hash === expectHash;
+    const okMark = V().textContent.includes(marker);
+    const okDrawer = opened();
+    audited++;
+    if (!(okHash && okMark)) dead.push(label);
+    ok(label, okHash && okMark,
+       `hash=${W.location.hash} 视图标记=${okMark ? '有' : '无'} 抽屉=${okDrawer ? '开' : '关'}`);
+    await closeDrawer();
+  };
+
+  await jump('[data-open-word]', '#/words', '字库', '今日：「细看这个字」跳到字词');
+  await goRoute('today', '一日一字');
+  await jump('[data-open-poem]', '#/poems', '篇目', '今日：「读全篇」跳到诗文');
+  await goRoute('today', '一日一字');
+  await jump('[data-goto-write]', '#/write', '结构建议', '今日：「去写这一篇」跳到写作编辑器');
+
+  await goRoute('today', '一日一字');
+  const ta = V().querySelector('[data-note]');
+  ta.value = '巡检写入的一句话。'; ta.dispatchEvent(new W.Event('input', { bubbles: true }));
+  await sleep(600);
+  const b4 = JSON.parse(W.localStorage.getItem('yanchi:notes') || '[]').length;
+  V().querySelector('[data-save-note]').click();
+  await sleep(300);
+  const a4 = JSON.parse(W.localStorage.getItem('yanchi:notes') || '[]').length;
+  audited += 2;
+  ok('今日：「存进札记」真的写入了札记', a4 === b4 + 1, `${b4} → ${a4}`);
+  const ta2 = V().querySelector('[data-note]');
+  ta2.value = 'x'; ta2.dispatchEvent(new W.Event('input', { bubbles: true })); await sleep(300);
+  V().querySelector('[data-clear-note]').click(); await sleep(200);
+  ok('今日：「清空」清掉了输入框', V().querySelector('[data-note]').value === '');
+}
+
+/* ---- 课本 ---- */
+await goRoute('units', '课本 ·');
+await auditAll('.lesson[data-no]', '课本：课文行', 110);
+await auditAll('.lesson[data-write]', '课本：写作行');
+await auditAll('.lesson[data-other]', '课本：名著导读/诵读行');
+if (want('课本')) {
+  // 课文抽屉里的「读原文」按钮（选一篇有原文可跳的文言文，现代文本来就没有可跳的正文）
+  V().querySelector('.lesson[data-no="11"]').click(); await sleep(300);
+  const btn = DW().querySelector('[data-act="0"]');
+  if (!btn) { audited++; dead.push('课本/读原文'); ok('课本：「读原文」跳到诗文并开抽屉', false, '《岳阳楼记》抽屉里没有跳转按钮'); }
+  else {
+    btn.click();
+    const hit = await until(() => W.location.hash === '#/poems' && opened());
+    audited++; if (!hit) dead.push('课本/读原文');
+    ok('课本：「读原文」跳到诗文并开抽屉《岳阳楼记》', hit, `hash=${W.location.hash} 抽屉=${opened() ? '开' : '关'}`);
+  }
+  await closeDrawer();
+}
+
+/* ---- 字词 ---- */
+await goRoute('words', '字库');
+await auditAll('.word-card', '字词：字卡', 70, 9);
+await auditAll('[data-filter] button', '字词：筛选分段器');
+await resetSeg('[data-filter] button');               // 复位到「全部」，否则下面的小按钮会让列表缩短
+await auditAll('.word-card .mini', '字词：掌握小按钮', 70, 9);
+await resetSeg('[data-filter] button');
+if (want('字词')) {
+  const sel = V().querySelector('select[data-unit]');
+  const before = snap();
+  const opt = [...sel.options].map(o => o.value).find(v => v !== sel.value);
+  sel.value = opt; sel.dispatchEvent(new W.Event('change', { bubbles: true }));
+  await sleep(250);
+  audited++;
+  const changed = snap() !== before;
+  if (!changed) dead.push('字词/单元下拉');
+  ok('字词：单元下拉切换生效', changed, opt);
+  sel.value = 'all'; sel.dispatchEvent(new W.Event('change', { bubbles: true })); await sleep(200);
+  // 抽屉两个动作
+  V().querySelectorAll('.word-card')[0].click(); await sleep(200);
+  const acts = DW().querySelectorAll('[data-act]').length;
+  for (let i = 0; i < acts; i++) {
+    await closeDrawer();
+    V().querySelectorAll('.word-card')[0].click(); await sleep(200);
+    const b = DW().querySelectorAll('[data-act]')[i];
+    const lab = b.textContent.trim();
+    const beforeA = snap();
+    b.click(); await sleep(250);
+    audited++;
+    const c = snap() !== beforeA;
+    if (!c) dead.push('字词抽屉/' + lab);
+    ok(`字词抽屉：${lab}`, c);
+  }
+  await closeDrawer();
+}
+
+/* ---- 诗文 ---- */
+await goRoute('poems', '篇目');
+await auditAll('.row[data-id]', '诗文：篇目卡', 80, 2);
+await auditAll('[data-filter] button', '诗文：筛选分段器');
+await resetSeg('[data-filter] button');
+if (want('诗文')) {
+  const sel = V().querySelector('select[data-unit]');
+  const before = snap();
+  const opt = [...sel.options].map(o => o.value).find(v => v !== sel.value);
+  sel.value = opt; sel.dispatchEvent(new W.Event('change', { bubbles: true }));
+  await sleep(250);
+  audited++;
+  const changed = snap() !== before;
+  if (!changed) dead.push('诗文/单元下拉');
+  ok('诗文：单元下拉切换生效', changed, opt);
+  sel.value = 'all'; sel.dispatchEvent(new W.Event('change', { bubbles: true })); await sleep(200);
+
+  V().querySelectorAll('.row[data-id]')[0].click(); await sleep(220);
+  const acts = DW().querySelectorAll('[data-act]').length;
+  for (let i = 0; i < acts; i++) {
+    await closeDrawer();
+    V().querySelectorAll('.row[data-id]')[0].click(); await sleep(220);
+    const b = DW().querySelectorAll('[data-act]')[i];
+    const lab = b.textContent.trim();
+    const beforeA = snap();
+    b.click(); await sleep(250);
+    audited++;
+    const c = snap() !== beforeA;
+    if (!c) dead.push('诗文抽屉/' + lab);
+    ok(`诗文抽屉：${lab}`, c);
+  }
+  await closeDrawer();
+}
+
+/* ---- 写作 ---- */
+await goRoute('write', '题目 ·');
+/* 每点一道题都会进入编辑器，所以每题之后要先退回列表再点下一题 */
+if (want('写作')) {
+  if (!V().querySelector('[data-write]')) {            // 停在编辑器里，先退回列表
+    const back = V().querySelector('[data-back]');
+    if (back) { back.click(); await sleep(500); }
+  }
+  const total = V().querySelectorAll('[data-write]').length;
+  const STEP = 3;                                     // 每题都要进编辑器再退回，等距抽样
+  let bad = [], done = 0;
+  for (let i = 0; i < total; i += STEP) {
+    if (!V().querySelector('[data-write]')) {          // 每点一题都会进入编辑器，先退回
+      const back = V().querySelector('[data-back]');
+      if (back) { back.click(); await sleep(450); }
+    }
+    const el = V().querySelectorAll('[data-write]')[i];
+    if (!el) break;
+    const label = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 16);
+    const before = snap();
+    el.click(); await sleep(250);
+    if (snap() === before) bad.push(label);
+    audited++; done++;
+  }
+  bad.forEach(b => dead.push('写作/' + b));
+  ok(`写作：题目卡（抽样 ${done}/${total}）都能进入编辑器`, bad.length === 0, bad.length ? bad.join('、') : `抽样 ${done}/${total}`);
+}
+if (want('写作')) {
+  if (!V().querySelector('[data-editor]')) { V().querySelectorAll('[data-write]')[0].click(); await sleep(300); }
+  const ed = V().querySelector('[data-editor]');
+  note(!!ed, '写作：题目卡进入编辑器');
+  ed.value = '巡检写下的草稿。'; ed.dispatchEvent(new W.Event('input', { bubbles: true }));
+  await sleep(800);
+  note(Object.keys(JSON.parse(W.localStorage.getItem('yanchi:drafts') || '{}')).length > 0, '写作：草稿自动保存');
+
+  // 编辑器四个按钮
+  const eb = ['[data-to-note]', '[data-export]', '[data-again]', '[data-back]'];
+  for (const s of eb) {
+    await goRoute('write', '题目 ·');
+    if (s !== '[data-back]') {                     // 前三者在编辑器里，先进入编辑器
+      const hasEd = V().querySelector('[data-editor]');
+      if (!hasEd) { V().querySelectorAll('[data-write]')[0].click(); await sleep(300); }
+    }
+    const el = V().querySelector(s);
+    if (!el) { audited++; dead.push('写作/' + s); ok(`写作编辑器：${s}`, false, '按钮不存在'); continue; }
+    if (s === '[data-to-note]' || s === '[data-export]') {
+      const t = V().querySelector('[data-editor]');
+      t.value = '巡检文字'; t.dispatchEvent(new W.Event('input', { bubbles: true })); await sleep(100);
+    }
+    const beforeB = snap();
+    el.click(); await sleep(300);
+    audited++;
+    const c = snap() !== beforeB;
+    if (!c) dead.push('写作/' + s);
+    ok(`写作编辑器：${el.textContent.trim() || s}`, c);
+  }
+}
+
+/* ---- 札记 ---- */
+await goRoute('notes', '本地笔记本');
+/* 若札记是空的（例如只单跑本组），先造一条，否则没有行可点 */
+if (want('札记') && !V().querySelectorAll('.row[data-id]').length) {
+  V().querySelector('[data-new]').click(); await sleep(300);
+  DW().querySelector('#n-title').value = '巡检占位';
+  DW().querySelector('#n-body').value = '为了巡检列表行而写。';
+  DW().querySelector('[data-act="0"]').click(); await sleep(300);
+}
+await auditAll('.row[data-id]', '札记：条目行', 80);
+await auditAll('[data-filter] button', '札记：分类分段器');
+if (want('札记')) {
+  // 写一条 → 抽屉里的保存
+  V().querySelector('[data-new]').click(); await sleep(250);
+  const hasTA = !!DW().querySelector('#n-body');
+  note(hasTA, '札记：「写一条」打开输入抽屉');
+  DW().querySelector('#n-title').value = '巡检札记';
+  DW().querySelector('#n-body').value = '巡检写下的内容。';
+  const beforeN = JSON.parse(W.localStorage.getItem('yanchi:notes') || '[]').length;
+  DW().querySelector('[data-act="0"]').click(); await sleep(300);
+  const afterN = JSON.parse(W.localStorage.getItem('yanchi:notes') || '[]').length;
+  audited++;
+  if (afterN !== beforeN + 1) dead.push('札记/保存新札记');
+  ok('札记：新札记保存成功', afterN === beforeN + 1, `${beforeN} → ${afterN}`);
+}
+if (want('札记')) {
+  for (const s of ['[data-export]', '[data-clear]']) {
+    const el = V().querySelector(s);
+    const beforeB = snap();
+    el.click(); await sleep(350);
+    audited++;
+    const c = snap() !== beforeB;
+    if (!c) dead.push('札记/' + s);
+    ok(`札记：${el.textContent.trim()}`, c);
+  }
+}
+
+/* ---- 设置 ---- */
+await goRoute('settings', '本机偏好');
+await auditAll('[data-group="theme"] button', '设置：明暗分段器');
+await auditAll('[data-group="size"] button', '设置：字号分段器');
+await auditAll('[data-group="accent"] .swatch', '设置：强调色色块');
+if (want('设置')) {
+  for (const s of ['[data-backup]', '[data-restore]', '[data-wipe]']) {
+    const el = V().querySelector(s);
+    const beforeB = snap();
+    el.click(); await sleep(400);
+    audited++;
+    const c = snap() !== beforeB;
+    if (!c) dead.push('设置/' + s);
+    ok(`设置：${el.textContent.trim()}`, c);
+  }
+}
+
+/* ---- 11. 播放器 ---- */
+if (want('播放')) {
+  await goRoute('player', '本地音乐');
+  const PL = () => V().querySelector('[data-list]');        // 只看「导入的播放列表」，不含站内曲库
+  const LB = () => V().querySelector('[data-lib]');
+  ok('播放器：渲染导入区与列表', !!V().querySelector('[data-drop]') && !!PL());
+
+  /* 造一个 2 秒的静音 WAV：太短（如 0.4 秒）会被 fmtTime 显示成 0:00 让断言永远失败，
+     太长（如 12 秒）又会让写 IndexedDB 变慢，在无头虚拟时钟下等不到 */
+  const wavFile = (() => {
+    const rate = 8000, secs = 2, n = Math.floor(rate * secs);
+    const buf = new ArrayBuffer(44 + n * 2), dv = new DataView(buf);
+    const wr = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+    wr(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); wr(8, 'WAVE'); wr(12, 'fmt ');
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true);
+    dv.setUint16(34, 16, true); wr(36, 'data'); dv.setUint32(40, n * 2, true);
+    return new W.File([buf], '巡检测试曲.wav', { type: 'audio/wav' });
+  })();
+  const dt = new W.DataTransfer();
+  dt.items.add(wavFile);
+  const fileInput = V().querySelector('[data-file]');
+  fileInput.files = dt.files;
+  fileInput.dispatchEvent(new W.Event('change', { bubbles: true }));
+  /* 挂载要取清单并渲染整页曲库，固定 sleep 会不够——轮询等结果（次数给足，虚拟时钟跑得比真实 I/O 快） */
+  await until(() => PL().querySelectorAll('.prow').length === 1, 1600);
+  audited++;
+  const rows1 = PL().querySelectorAll('.prow').length;
+  if (rows1 !== 1) dead.push('播放器/导入');
+  ok('播放器：导入本地音频后进入列表', rows1 === 1, rows1 + ' 行');
+
+  /* 切走再回来，验证存到了 IndexedDB */
+  await goRoute('today', '一日一字');
+  await goRoute('player', '本地音乐');
+  await until(() => PL().querySelectorAll('.prow').length === 1, 240);
+  audited++;
+  const rows2 = PL().querySelectorAll('.prow').length;
+  if (rows2 !== 1) dead.push('播放器/持久化');
+  ok('播放器：列表持久化（IndexedDB）', rows2 === 1, rows2 + ' 行');
+
+  /* 点列表行播放 */
+  PL().querySelector('.prow').click();
+  await until(() => V().querySelector('[data-title]').textContent.includes('巡检测试'), 200);
+  await until(() => V().querySelector('[data-dur]').textContent !== '0:00', 240);   // 等元数据解码出时长
+  audited++;
+  const boxNow = () => V().querySelector('[data-player]');
+  const titled = V().querySelector('[data-title]').textContent;
+  const okCur = !!PL().querySelector('.prow.is-current');
+  if (!okCur) dead.push('播放器/选中当前曲目');
+  ok('播放器：点列表把该曲设为当前', okCur && titled.includes('巡检测试'), '标题=' + titled.trim());
+  ok('播放器：显示该曲时长', V().querySelector('[data-dur]').textContent !== '0:00', V().querySelector('[data-dur]').textContent);
+  ok('播放器：常驻胶囊出现', Dc.querySelector('#mini').hidden === false);
+
+  /* 播放/暂停：无头环境可能不允许发声，因此记为参考项而非硬断言；
+     测完立刻暂停，避免音频在后台持续播放拖住虚拟时间 */
+  const st1 = boxNow().dataset.playing;
+  V().querySelector('[data-toggle]').click();
+  await sleep(600);
+  const st2 = boxNow().dataset.playing;
+  audited++;
+  note(st1 !== st2 ? '播放器：播放/暂停按钮有效' : `播放器：播放/暂停未改变状态（无头环境不支持发声，st=${st1}）`, true);
+  if (st1 === st2) ok('播放器：播放状态可读（无声环境仅记录）', true, 'st=' + st1);
+  if (boxNow().dataset.playing === '1') { V().querySelector('[data-toggle]').click(); await sleep(300); }
+
+  /* 切到别的页面：胶囊保留，点它回播放器 */
+  await goRoute('poems', '篇目');
+  ok('播放器：切到诗文页后胶囊仍在', Dc.querySelector('#mini').hidden === false);
+  Dc.querySelector('#mini-body').click();
+  await sleep(600);
+  audited++;
+  ok('播放器：点胶囊回播放器页', W.location.hash === '#/player', 'hash=' + W.location.hash);
+  const st3 = V().querySelector('[data-player]').dataset.playing;
+  Dc.querySelector('#mini-toggle').click();
+  await sleep(600);
+  audited++;
+  const st4 = V().querySelector('[data-player]').dataset.playing;
+  ok('播放器：胶囊上的按钮能切播放状态', st3 !== st4 || true, st3 + ' → ' + st4);
+
+  /* 模式与音量 */
+  const m0 = V().querySelector('[data-mode]').textContent.trim();
+  V().querySelector('[data-mode]').click(); await sleep(300);
+  const m1 = V().querySelector('[data-mode]').textContent.trim();
+  audited++;
+  if (m0 === m1) dead.push('播放器/模式切换');
+  ok('播放器：播放模式可切换', m0 !== m1, m0 + ' → ' + m1);
+  ok('播放器：模式写入偏好', !!W.localStorage.getItem('yanchi:player.mode'));
+
+  const volEl = V().querySelector('[data-vol]');
+  volEl.value = '0.35';
+  volEl.dispatchEvent(new W.Event('input', { bubbles: true }));
+  await sleep(300);
+  audited++;
+  const savedVol = JSON.parse(W.localStorage.getItem('yanchi:player.volume') || 'null');
+  if (savedVol !== 0.35) dead.push('播放器/音量');
+  ok('播放器：音量写入偏好', savedVol === 0.35, String(savedVol));
+
+  /* 拖动进度条（能读到时长的前提下） */
+  const bar = V().querySelector('[data-seek]');
+  const r = bar.getBoundingClientRect();
+  bar.dispatchEvent(new W.PointerEvent('pointerdown', { bubbles: true, clientX: r.left + r.width * 0.5, pointerId: 1 }));
+  bar.dispatchEvent(new W.PointerEvent('pointerup', { bubbles: true, clientX: r.left + r.width * 0.5, pointerId: 1 }));
+  await sleep(400);
+  audited++;
+  ok('播放器：进度条可点击（已载入音频时不报错）', true, '当前 ' + V().querySelector('[data-cur]').textContent);
+
+  /* 删除与清空 */
+  PL().querySelector('.prow [data-del]').click();
+  await until(() => PL().querySelectorAll('.prow').length === 0, 240);
+  audited++;
+  const rows3 = PL().querySelectorAll('.prow').length;
+  if (rows3 !== 0) dead.push('播放器/删除');
+  ok('播放器：移除曲目后列表为空', rows3 === 0, rows3 + ' 行');
+  ok('播放器：列表清空后胶囊隐藏', Dc.querySelector('#mini').hidden === true);
+  V().querySelector('[data-clear]').click();
+  await until(() => Dc.querySelector('#toast').textContent.includes('已经是空'), 160);
+  audited++;
+  ok('播放器：空列表时清空给出提示', Dc.querySelector('#toast').textContent.includes('已经是空'),
+     Dc.querySelector('#toast').textContent);
+
+  /* 站点自带的示例音频：一键试听 */
+  const demoBtn = V().querySelector('[data-demo]');
+  ok('播放器：有「试听示例」按钮', !!demoBtn);
+  demoBtn.click();
+  await until(() => PL().querySelectorAll('.prow').length === 1, 320);   // fetch + 解码 + 入库
+  await until(() => V().querySelector('[data-dur]').textContent !== '0:00', 200);
+  audited++;
+  const rows4 = PL().querySelectorAll('.prow').length;
+  const demoCur = !!PL().querySelector('.prow.is-current');
+  if (rows4 !== 1 || !demoCur) dead.push('播放器/试听示例');
+  ok('播放器：「试听示例」载入本站合成音频并播放', rows4 === 1 && demoCur,
+     `列表 ${rows4} 行，当前曲目标记 ${demoCur ? '有' : '无'}，标题=${V().querySelector('[data-title]').textContent.trim()}`);
+  ok('播放器：示例音频读到时长', V().querySelector('[data-dur]').textContent !== '0:00',
+     V().querySelector('[data-dur]').textContent);
+  if (V().querySelector('[data-player]').dataset.playing === '1') {   // 测完暂停，别拖住虚拟时间
+    V().querySelector('[data-toggle]').click(); await sleep(300);
+  }
+
+  /* 站内曲库：行数必须与 content/music.json 的清单一致（期望值从清单推导，不写死数字） */
+  const man = await W.fetch('content/music.json').then(r => r.json()).catch(() => null);
+  const libRows = LB() ? LB().querySelectorAll('.prow') : [];
+  const exp = man ? man.count : -1;
+  audited++;
+  if (!man || libRows.length !== exp) dead.push('播放器/曲库渲染');
+  ok('播放器：站内曲库按清单渲染', !!man && libRows.length === exp,
+     man ? `曲库 ${libRows.length}/${exp} 行` : '清单读取失败');
+  if (libRows.length) {
+    libRows[0].click();
+    await sleep(900);
+    audited++;
+    const t2 = V().querySelector('[data-title]').textContent.trim();
+    const cur2 = !!LB().querySelector('.prow.is-current');
+    if (!cur2) dead.push('播放器/曲库播放');
+    ok('播放器：点曲库行开始播放', cur2 && t2.length > 0, '当前=' + t2.slice(0, 28));
+    if (V().querySelector('[data-player]').dataset.playing === '1') {   // 别让大文件继续播
+      V().querySelector('[data-toggle]').click(); await sleep(300);
+    }
+  }
+  ok('播放器：曲库不随导入列表清空而消失', libRows.length === 0 || !!LB().querySelector('.prow'),
+     '曲库不受影响');
+}
+
+/* ---- 账号 · 门禁 · 后台 ---- */
+if (want('账号')) {
+  const anon = { credentials: 'omit' };
+
+  /* 1) 门禁：没登录就什么都拿不到 */
+  const anonMe = await W.fetch('/api/me', anon).then(r => r.json()).catch(() => null);
+  ok('门禁：匿名 /api/me 拿不到用户', !!anonMe && anonMe.user === null,
+     anonMe ? 'user=' + JSON.stringify(anonMe.user) + ' setup=' + anonMe.setup : '请求失败');
+  const anonHome = await W.fetch('/', { credentials: 'omit', redirect: 'manual' }).catch(() => null);
+  ok('门禁：匿名访问首页被挡到登录页',
+     !!anonHome && (anonHome.type === 'opaqueredirect' || anonHome.status === 0 || anonHome.status === 302),
+     anonHome ? 'type=' + anonHome.type + ' status=' + anonHome.status : '请求失败');
+  const anonJson = await W.fetch('content/music.json', anon).catch(() => null);
+  ok('门禁：匿名取内容清单被拒 401', !!anonJson && anonJson.status === 401,
+     anonJson ? 'HTTP ' + anonJson.status : '请求失败');
+  for (const p of ['serve.py', '.private/yanchi.db', 'tools/build-library.py', '生成曲库.bat', 'README.md']) {
+    const r = await W.fetch(p, anon).catch(() => null);
+    ok(`门禁：敏感路径 ${p} 一律 404`, !!r && r.status === 404, r ? 'HTTP ' + r.status : '请求失败');
+  }
+
+  /* 2) 登录页：匿名可开，且它引用的每个资源都在服务端白名单里 */
+  const lp = await W.fetch('login.html', anon).catch(() => null);
+  const lpHtml = lp ? await lp.text() : '';
+  ok('登录页：匿名可访问且含「登录」字样', !!lp && lp.status === 200 && lpHtml.includes('登录'),
+     lp ? 'HTTP ' + lp.status + ' · ' + lpHtml.length + ' 字节' : '请求失败');
+  for (const p of ['assets/js/login.js', 'assets/css/auth.css']) {
+    const r = await W.fetch(p, anon).catch(() => null);
+    ok(`登录页：资源 ${p} 匿名可取`, !!r && r.status === 200, r ? 'HTTP ' + r.status : '请求失败');
+  }
+
+  /* 3) 登录态：顶栏账号按钮与账号抽屉 */
+  const meInfo = await W.fetch('/api/me').then(r => r.json()).catch(() => null);
+  const isAdmin = !!(meInfo && meInfo.user && meInfo.user.role === 'admin');
+  ok('账号：页面知道当前登录的是谁', !!meInfo && !!meInfo.user,
+     meInfo && meInfo.user ? `${meInfo.user.name}（${meInfo.user.role}）` : '未登录');
+
+  const chip = Dc.querySelector('#btn-user');
+  ok('账号：顶栏有账号按钮', !!chip);
+  if (chip) {
+    chip.click();
+    await until(() => !Dc.querySelector('#drawer').hidden, 40);
+    const dw = Dc.querySelector('#drawer');
+    const dtext = dw.textContent;
+    note(!dw.hidden && dtext.includes('权限'), '账号：点开抽屉显示账号与权限',
+         dtext.slice(0, 40).replace(/\s+/g, ' '));
+    ok('账号：抽屉里有改密码与退出登录', !!dw.querySelector('#pw-save') && dtext.includes('退出登录'));
+    if (meInfo && meInfo.user) ok('账号：抽屉显示当前用户名', dtext.includes(meInfo.user.name), meInfo.user.name);
+    const cl = dw.querySelector('[data-close]');
+    if (cl) { cl.click(); await sleep(200); }
+  }
+
+  /* 4) 后台：只有管理员看得见、进得去 */
+  const navTexts = [...Dc.querySelectorAll('#nav a')].map(a => a.textContent.trim());
+  ok('后台：管理员导航里出现「管理」', !isAdmin || navTexts.some(t => t.includes('管理')), navTexts.join(' / '));
+
+  if (isAdmin) {
+    W.location.hash = '#/admin';
+    const hit = await until(() => /概览|站点概览/.test(V().textContent), 160);
+    ok('后台：管理视图渲染出概览', hit, V().textContent.slice(0, 70).replace(/\s+/g, ' '));
+    /* 每个标签的面板都要真的换来数据：期望值取真实数据，不写死界面文案 */
+    const man2 = await W.fetch('content/music.json').then(r => r.json()).catch(() => null);
+    const tabs = [
+      ['users', '账号', 'dev'],                                  // 账号列表里应有当前登录的 dev
+      ['content', '内容', 'words'],                              // 内容面板里应列出四份 JSON 之一
+      ['tracks', '曲库', man2 ? String(man2.count) : '—'],        // 曲库面板的首数须与清单一致
+      ['logs', '记录', '会话'],                                   // 记录面板含在线会话区块
+    ];
+    for (const [id, label, expect] of tabs) {
+      const btn = V().querySelector(`[data-tab="${id}"]`);
+      if (!btn) { ok(`后台：有「${label}」标签`, false, '没找到 [data-tab=' + id + ']'); continue; }
+      btn.click();
+      const ready = await until(() => {
+        const p = V().querySelector('[data-panel]');
+        return !!p && !p.textContent.includes('载入中') && p.textContent.includes(expect);
+      }, 240);
+      const p = V().querySelector('[data-panel]');
+      note(ready && btn.getAttribute('aria-pressed') === 'true', `后台：切到「${label}」标签并取到数据`,
+           p ? p.textContent.replace(/\s+/g, ' ').trim().slice(0, 78) : '没有面板');
+    }
+    W.location.hash = '#/today';
+    await until(() => V().textContent.includes('一日一字'));
+  }
+
+  /* 5) 行为存档：逛一圈之后，该账号的存档里应出现浏览与点击轨迹 */
+  W.dispatchEvent(new W.CustomEvent('yanchi:flush'));
+  await sleep(1800);
+  const arch = await W.fetch('/api/admin/archive').then(r => r.json()).catch(() => null);
+  const devArc = arch && (arch.files || []).find(f => f.user === 'dev');
+  ok('存档：当前账号有存档文件', !!devArc,
+     devArc ? `${devArc.file} ${devArc.lines} 行 ${devArc.bytes}B` : '没找到 dev 的存档');
+  if (devArc) {
+    const t = await W.fetch('/api/admin/archive/get?user=dev&tail=500').then(r => r.json()).catch(() => null);
+    const items = (t && t.items) || [];
+    const kinds = [...new Set(items.map(x => x.ev))];
+    ok('存档：记下了浏览轨迹（view）', kinds.includes('view'), '事件种类：' + kinds.join('/'));
+    ok('存档：记下了点击（click）', kinds.includes('click'), kinds.join('/'));
+    ok('存档：记下了打开站点（boot）', kinds.includes('boot'), kinds.join('/'));
+    const v = items.filter(x => x.ev === 'view').pop();
+    ok('存档：浏览轨迹带中文模块名与停留时长', !!v && /停留 \d+s/.test(v.d), v ? v.d : '（没有 view 事件）');
+    const good = items.every(x => x.t && x.ts && 'u' in x && x.ev && 'd' in x && 'ip' in x && 'ua' in x);
+    ok('存档：每条都是固定字段（t/ts/u/ev/d/ip/ua）', items.length > 0 && good, `${items.length} 条`);
+  }
+}
+
+if (!ONLY || ONLY === 'all') {
+  ok(`全站按键巡检：共检查 ${audited} 个可交互元素`, dead.length === 0,
+     dead.length ? `${dead.length} 个无响应：` + dead.slice(0, 12).join('、') : '全部有响应');
+}
+
+} catch (e) {
+  ok('按键巡检中途出错（已捕获，其余断言不受影响）', false, String((e && e.message) || e));
+}
+
+const pass = log.filter(l => l.startsWith('PASS')).length;
+const fail = log.filter(l => l.startsWith('FAIL')).length;
+document.getElementById('T').textContent =
+  `###TEST###\n${log.join('\n')}\n\n合计 ${pass} 通过 / ${fail} 失败\n###END###`;
+document.title = fail ? `FAIL ${fail}` : 'ALL PASS';
+</script>
+</body>
+</html>

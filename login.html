@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-accent="qing" data-size="m">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>砚池 · 登录</title>
+<meta name="description" content="砚池 —— 登录后继续你的读写。字、词、诗文与札记，都在这池子里。" />
+<meta name="robots" content="noindex" />
+<!-- 首屏前套用偏好，避免主题闪烁（与站点其余页面同一套 yanchi:prefs） -->
+<script>
+  try{
+    var p = JSON.parse(localStorage.getItem('yanchi:prefs')||'{}');
+    var h = document.documentElement;
+    if(p.theme) h.setAttribute('data-theme', p.theme);
+    if(p.accent) h.setAttribute('data-accent', p.accent);
+    if(p.size) h.setAttribute('data-size', p.size);
+  }catch(e){}
+</script>
+<link rel="stylesheet" href="assets/css/glass.css?v=20261007d" />
+<link rel="stylesheet" href="assets/css/auth.css?v=20261007d" />
+</head>
+<body class="auth-body">
+
+<!-- 折射滤镜：.glass 的 backdrop-filter 引用了它，缺了玻璃就没有模糊 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <filter id="liquid" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="11" result="n" />
+    <feGaussianBlur in="n" stdDeviation="1.4" result="s" />
+    <feDisplacementMap in="SourceGraphic" in2="s" scale="7" xChannelSelector="R" yChannelSelector="G" />
+  </filter>
+
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20c.7-3.6 3.7-5.6 7.2-5.6s6.5 2 7.2 5.6"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8.2" cy="12" r="3.7"/><path d="M11.9 12H20M17.4 12v3.2M14.8 12v2.4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.9"/><path d="M3 12c2.2-3.6 5.3-5.4 9-5.4s6.8 1.8 9 5.4c-2.2 3.6-5.3 5.4-9 5.4S5.2 15.6 3 12z"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.9"/><path d="M3 12c2.2-3.6 5.3-5.4 9-5.4s6.8 1.8 9 5.4c-2.2 3.6-5.3 5.4-9 5.4S5.2 15.6 3 12z"/><path d="M5 5l14 14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 01-12.9 5.2M4.5 12a7.5 7.5 0 0112.9-5.2"/><path d="M17.4 3.6v3.4h-3.4M6.6 20.4v-3.4h3.4"/></symbol>
+  <symbol id="i-broken" viewBox="0 0 24 24"><path d="M12 3.5l7 2.4v5c0 4.4-2.9 7.9-7 9.6-4.1-1.7-7-5.2-7-9.6v-5z"/><path d="M9.4 9.4l5.2 5.2M14.6 9.4l-5.2 5.2"/></symbol>
+</svg>
+
+<!-- 与站点其余页面同款背景：三团低饱和色雾 + 极淡纸纹 -->
+<div class="bg" aria-hidden="true">
+  <span class="blob b1"></span>
+  <span class="blob b2"></span>
+  <span class="blob b3"></span>
+  <span class="blob b4"></span>
+  <span class="blob b5"></span>
+</div>
+<div class="grain" aria-hidden="true"></div>
+
+<noscript>
+  <div class="auth__noscript">登录页需要 JavaScript：请在浏览器设置里开启后再刷新。</div>
+</noscript>
+
+<main class="auth">
+  <section class="card glass spec auth__card" id="card" aria-labelledby="title">
+
+    <header class="brand auth__brand">
+      <span class="brand__mark" aria-hidden="true">砚</span>
+      <span class="brand__text"><b>砚池</b><i>一字一句，从池中生</i></span>
+    </header>
+
+    <!-- ① 正在确认登录状态 -->
+    <div class="auth__pane auth__load" id="pane-load">
+      <span class="auth__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>正在确认登录状态…</span>
+    </div>
+
+    <!-- ② 登录 / 首次创建管理员 -->
+    <div class="auth__pane" id="pane-form" hidden>
+      <h1 class="auth__title" id="title">登录</h1>
+      <p class="auth__sub" id="sub">回到你的砚池，继续读写。</p>
+
+      <form class="auth__form" id="form" novalidate>
+        <label class="sr-only" for="name">用户名</label>
+        <div class="field">
+          <svg class="ic" aria-hidden="true"><use href="#i-user"/></svg>
+          <input id="name" name="name" type="text" autocomplete="username"
+                 autocapitalize="off" autocorrect="off" spellcheck="false"
+                 placeholder="用户名" maxlength="24" />
+        </div>
+
+        <label class="sr-only" for="pass">密码</label>
+        <div class="field">
+          <svg class="ic" aria-hidden="true"><use href="#i-key"/></svg>
+          <input id="pass" name="password" type="password" autocomplete="current-password"
+                 placeholder="密码" maxlength="128" />
+          <button type="button" class="field__eye" id="eye" aria-pressed="false"
+                  aria-label="显示密码" title="显示密码">
+            <svg class="ic" aria-hidden="true"><use id="eye-use" href="#i-eye"/></svg>
+          </button>
+        </div>
+
+        <div class="field" id="confirm-wrap" hidden>
+          <svg class="ic" aria-hidden="true"><use href="#i-key"/></svg>
+          <label class="sr-only" for="confirm">确认密码</label>
+          <input id="confirm" name="confirm" type="password" autocomplete="new-password"
+                 placeholder="再输入一次密码" maxlength="128" />
+        </div>
+
+        <p class="auth__msg" id="msg" role="alert" hidden></p>
+
+        <button class="btn btn--primary auth__submit" id="submit" type="submit">登录</button>
+
+        <!-- 自助注册入口：仅在 register 为真且非 setup 时由 login.js 显示 -->
+        <button class="btn auth__alt" id="to-register" type="button" hidden>创建账号</button>
+        <!-- 注册态下的文字按钮：切回登录 -->
+        <button class="auth__toggle" id="to-login" type="button" hidden>返回登录</button>
+      </form>
+    </div>
+
+    <!-- ③ 连不上服务 -->
+    <div class="auth__pane" id="pane-down" hidden>
+      <span class="auth__badge" aria-hidden="true"><svg class="ic"><use href="#i-broken"/></svg></span>
+      <h1 class="auth__title">连不上砚池</h1>
+      <p class="auth__sub" id="down-msg">服务暂时没有响应。也许它正在重启，也许网络断开了。稍等片刻再刷新，就能回到登录。</p>
+      <button class="btn auth__submit" id="retry" type="button">
+        <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>重试
+      </button>
+    </div>
+
+  </section>
+
+  <p class="auth__foot">砚池 · 登录后，字词与札记都留在这台机器上，不外传。</p>
+</main>
+
+<script type="module" src="assets/js/login.js?v=20261007d"></script>
+</body>
+</html>

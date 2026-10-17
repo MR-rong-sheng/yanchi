@@ -1,0 +1,205 @@
+/* ==========================================================================
+   砚池 · glass.css —— 设计令牌 + 液态玻璃基元
+   简约取向：单一强调色、细边、低饱和色雾，玻璃只负责“折射与层次”。
+   ========================================================================== */
+
+:root{
+  /* 字体 */
+  --font-ui: "PingFang SC","Microsoft YaHei","Segoe UI","Helvetica Neue",system-ui,sans-serif;
+  --font-serif: "Songti SC","Source Han Serif SC","Noto Serif SC",Georgia,"STSong","SimSun",serif;
+  --fs: 16px;                     /* 由 data-size 控制 */
+
+  /* 墨色阶梯 */
+  --ink:      #1c2026;
+  --ink-2:    #4c545e;
+  --ink-3:    #7d858f;
+  --ink-4:    #a8b0b9;
+
+  /* 强调色：色相/饱和/亮度由 data-accent 切换 */
+  --h: 196; --s: 34%; --l: 42%;
+  --accent:      hsl(var(--h) var(--s) var(--l));
+  --accent-soft: hsl(var(--h) var(--s) var(--l) / .12);
+  --accent-line: hsl(var(--h) var(--s) var(--l) / .34);
+
+  /* 玻璃：白纱要薄，背后才有东西透上来（厚了就成白塑料）
+     顶缘高光/内圈细环/底缘回光三件套负责「有厚度」的错觉 */
+  --glass-tint:  rgba(255,255,255,.34);
+  --glass-tint2: rgba(255,255,255,.12);
+  --glass-line:  rgba(255,255,255,.66);
+  --glass-hl:    rgba(255,255,255,.94);
+  --blur: 22px;
+  /* 纸上的两片色雾（给玻璃折射用的「结构」，纯灰底折射不出来） */
+  --wash-1: hsl(var(--h) var(--s) 88% / .55);
+  --wash-2: hsl(calc(var(--h) + 30) calc(var(--s) + 6%) 86% / .45);
+
+  /* 形状与投影 */
+  --r-lg: 24px;
+  --r:    16px;
+  --r-sm: 11px;
+  --shadow-1: 0 1px 2px rgba(16,22,30,.05), 0 8px 24px rgba(16,22,30,.07);
+  --shadow-2: 0 2px 4px rgba(16,22,30,.06), 0 18px 48px rgba(16,22,30,.12);
+  --ease: cubic-bezier(.22,.78,.24,1);
+
+  /* 纸面 */
+  --paper-1: #eef1f0;
+  --paper-2: #e7ebef;
+}
+
+/* 夜间：墨底，玻璃转为微亮 */
+html[data-theme="dark"]{
+  --ink:      #eef1f5;
+  --ink-2:    #b9c1cb;
+  --ink-3:    #8c959f;
+  --ink-4:    #6a737d;
+  --glass-tint:  rgba(255,255,255,.055);
+  --glass-tint2: rgba(255,255,255,.018);
+  --glass-line:  rgba(255,255,255,.13);
+  --glass-hl:    rgba(255,255,255,.24);
+  --wash-1: hsl(var(--h) var(--s) 26% / .55);
+  --wash-2: hsl(calc(var(--h) + 30) calc(var(--s) + 6%) 24% / .45);
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.42);
+  --shadow-2: 0 2px 6px rgba(0,0,0,.45), 0 22px 60px rgba(0,0,0,.55);
+  --paper-1: #0d1015;
+  --paper-2: #131820;
+}
+
+/* 强调色方案（原创命名：青 / 赭 / 紫 / 墨） */
+html[data-accent="qing"]{ --h:196; --s:34%; --l:42% }
+html[data-accent="zhe"] { --h:22;  --s:36%; --l:47% }
+html[data-accent="zi"]  { --h:270; --s:26%; --l:52% }
+html[data-accent="mo"]  { --h:210; --s:8%;  --l:38% }
+
+/* 夜间单独提亮强调色，保证对比度（选择器需两个属性，优先级高于上面） */
+html[data-theme="dark"][data-accent="qing"]{ --l:58% }
+html[data-theme="dark"][data-accent="zhe"] { --l:60% }
+html[data-theme="dark"][data-accent="zi"]  { --l:66% }
+html[data-theme="dark"][data-accent="mo"]  { --l:62% }
+
+/* 字号档位 */
+html[data-size="s"]{ --fs:15px }
+html[data-size="m"]{ --fs:16px }
+html[data-size="l"]{ --fs:17.5px }
+
+*{ box-sizing:border-box; margin:0; padding:0 }
+
+html,body{ height:100% }
+
+/* 画布兜底色：html 自己不画底、body 又只有 100% 视口高，而页面往往比视口高 →
+   第一个视口以下那段会露出浏览器默认的白（fixed 的渐变只按视口绘制一次）。
+   给 html 一层纸色，body 改用 background-color（不要用 background 简写，它会把颜色重置成透明）。 */
+html{
+  background-color:var(--paper-1);
+  color-scheme:light;
+}
+html[data-theme="dark"]{ color-scheme:dark }
+
+body{
+  font-family:var(--font-ui);
+  font-size:var(--fs);
+  line-height:1.7;
+  color:var(--ink);
+  background-color:var(--paper-1);
+  background-image:
+    radial-gradient(1100px 780px at 88% -12%, var(--wash-1), transparent 62%),
+    radial-gradient(900px 700px at -10% 104%, var(--wash-2), transparent 66%),
+    linear-gradient(170deg, var(--paper-1), var(--paper-2));
+  background-attachment:fixed;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+  min-height:100%;
+}
+
+/* ---------- 背景色雾：低饱和、慢速 ---------- */
+.bg{
+  position:fixed; inset:-30%; z-index:-2; pointer-events:none;
+  filter:blur(58px) saturate(178%);
+  opacity:1;
+}
+.blob{ position:absolute; display:block; border-radius:50%; }
+.b1{
+  width:52vmax; height:52vmax; left:2%; top:4%;
+  background:radial-gradient(circle at 35% 35%, hsl(var(--h) var(--s) 60% / .86), transparent 66%);
+  animation:drift1 34s var(--ease) infinite alternate;
+}
+.b2{
+  width:46vmax; height:46vmax; right:0%; top:18%;
+  background:radial-gradient(circle at 60% 40%, hsl(calc(var(--h) + 26) calc(var(--s) - 4%) 64% / .74), transparent 68%);
+  animation:drift2 42s var(--ease) infinite alternate;
+}
+.b3{
+  width:44vmax; height:44vmax; left:26%; bottom:-6%;
+  background:radial-gradient(circle at 50% 50%, hsl(calc(var(--h) - 24) calc(var(--s) + 4%) 68% / .68), transparent 70%);
+  animation:drift1 50s var(--ease) infinite alternate-reverse;
+}
+/* 两团更紧的色结：位置压在正文栏背后，手机上的卡片才有颜色可透 */
+.b4{
+  width:26vmax; height:26vmax; left:6%; top:32%;
+  background:radial-gradient(circle at 45% 45%, hsl(calc(var(--h) + 12) calc(var(--s) + 10%) 66% / .58), transparent 62%);
+  animation:drift2 28s var(--ease) infinite alternate;
+}
+.b5{
+  width:22vmax; height:22vmax; right:5%; bottom:10%;
+  background:radial-gradient(circle at 50% 50%, hsl(calc(var(--h) - 16) calc(var(--s) + 14%) 70% / .52), transparent 64%);
+  animation:drift1 36s var(--ease) infinite alternate-reverse;
+}
+@keyframes drift1{ from{ transform:translate3d(0,0,0) scale(1) } to{ transform:translate3d(9vw,7vh,0) scale(1.16) } }
+@keyframes drift2{ from{ transform:translate3d(0,0,0) scale(1.12) } to{ transform:translate3d(-11vw,9vh,0) scale(.94) } }
+
+/* 极淡的纸纹，只为消除塑料感 */
+.grain{
+  position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.035;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/></filter><rect width='160' height='160' filter='url(%23g)'/></svg>");
+}
+
+/* ==========================================================================
+   玻璃基元
+   ========================================================================== */
+.glass{
+  position:relative;
+  background:linear-gradient(155deg, var(--glass-tint) 0%, var(--glass-tint2) 58%, rgba(255,255,255,.06) 100%);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(180%);
+  backdrop-filter:blur(var(--blur)) saturate(180%);
+  backdrop-filter:blur(var(--blur)) saturate(180%) url(#liquid);   /* Chromium 走这条；Safari 忽略它、保留上一条 */
+  border:1px solid var(--glass-line);
+  box-shadow:
+    var(--shadow-2),
+    inset 0 1px 0 var(--glass-hl),
+    inset 0 0 0 1px color-mix(in srgb, var(--glass-hl) 30%, transparent),
+    inset 0 -20px 30px -24px color-mix(in srgb, var(--glass-hl) 55%, transparent);
+  border-radius:var(--r);
+  isolation:isolate;
+}
+/* 顶缘高光：一条极细的渐隐亮线 */
+.glass::after{
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:1;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-hl) 46%, transparent), transparent 40%),
+    linear-gradient(115deg, color-mix(in srgb, var(--glass-hl) 24%, transparent) 0%, transparent 32%);
+  opacity:.75;
+}
+.glass > *{ position:relative; z-index:2 }
+
+/* 鼠标跟随的镜面反射：比演示版收敛很多 */
+.glass.spec::before{
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:3;
+  background:radial-gradient(240px 170px at var(--mx,50%) var(--my,-10%),
+    color-mix(in srgb, var(--glass-hl) 60%, transparent), transparent 62%);
+  opacity:0; transition:opacity .5s var(--ease);
+}
+.glass.spec:hover::before{ opacity:.5 }
+
+/* 强调色淡淡的描边玻璃（用于选中态） */
+.glass.accent{
+  border-color:var(--accent-line);
+  box-shadow:var(--shadow-1), inset 0 1px 0 var(--glass-hl), inset 0 0 0 1px var(--accent-soft);
+}
+
+/* 分隔线 */
+.hr{ height:1px; border:0; background:color-mix(in srgb, var(--ink) 10%, transparent); margin:var(--gap,18px) 0 }
+
+/* 动效开关：整段关掉动画，而不是把时长压到极小 —— 这样在“减少动态效果”
+   的环境下（以及无头浏览器截图时）元素直接呈现最终状态，不会停在 opacity:0 */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{ animation:none !important; transition-duration:.01ms !important }
+}
