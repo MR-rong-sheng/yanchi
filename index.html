@@ -15,7 +15,7 @@
     if(p.size) h.setAttribute('data-size', p.size);
   }catch(e){}
 </script>
-<link rel="stylesheet" href="assets/css/glass.css?v=20261025" />
+<link rel="stylesheet" href="assets/css/glass.css?v=20261025b" />
 <link rel="stylesheet" href="assets/css/app.css?v=20261025" />
 <link rel="stylesheet" href="assets/css/review.css?v=20261025" />
 <link rel="stylesheet" href="assets/css/admin.css?v=20261025" />
@@ -79,6 +79,8 @@
   <span class="blob b5"></span>
 </div>
 <div class="grain" aria-hidden="true"></div>
+<!-- 落花层：canvas 画的，颜色跟主题色走（assets/js/petals.js） -->
+<canvas class="petals" id="petals" aria-hidden="true"></canvas>
 
 <!-- ===== 顶栏 ===== -->
 <header class="topbar">
@@ -127,6 +129,7 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script type="module" src="assets/js/petals.js?v=20261025"></script>
 <script type="module" src="assets/js/app.js?v=20261025b"></script>
 </body>
 </html>

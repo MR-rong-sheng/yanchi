@@ -164,6 +164,12 @@ body::before{
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/></filter><rect width='160' height='160' filter='url(%23g)'/></svg>");
 }
 
+/* ---------- 落花层：canvas 画的背景花瓣，只作背景、不接收指针 ---------- */
+.petals{
+  position:fixed; inset:0; z-index:-1; pointer-events:none;
+  display:block; width:100%; height:100%;
+}
+
 /* ==========================================================================
    玻璃基元
    ========================================================================== */
