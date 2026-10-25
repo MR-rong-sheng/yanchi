@@ -98,16 +98,28 @@ body{
   font-size:var(--fs);
   line-height:1.7;
   color:var(--ink);
+  /* body 背景必须透明：.bg(色雾)/.grain(纸纹)/body::before(渐变) 都是负 z-index，
+     而 body 不是层叠上下文 —— 一旦 body 自己有不透明背景，就会把这三层全盖在下面，
+     结果第一屏是纯色、第一屏以下才露出渐变，中间一条笔直的横缝。
+     纸色由 html 兜底（见上），这里只负责让负 z-index 的层透出来。 */
+  background-color:transparent;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+  min-height:100%;
+}
+
+/* 背景必须画在「固定层」上，不能画在 body 自己的盒子上：
+   html,body 都是 height:100%（= 一个视口高），页面比视口长时，body 的盒子只到第一屏底部，
+   它自己的背景（哪怕 attachment:fixed）也只画到那儿 —— 再往下露出 html 的纯色，
+   滚动时就是一条笔直的横线接缝。改成 fixed 伪元素，永远盖住当前视口。 */
+body::before{
+  content:''; position:fixed; inset:0; z-index:-3; pointer-events:none;
   background-color:var(--paper-1);
   background-image:
     radial-gradient(1100px 780px at 88% -12%, var(--wash-1), transparent 62%),
     radial-gradient(900px 700px at -10% 104%, var(--wash-2), transparent 66%),
     linear-gradient(170deg, var(--paper-1), var(--paper-2));
-  background-attachment:fixed;
-  -webkit-font-smoothing:antialiased;
-  text-rendering:optimizeLegibility;
-  overflow-x:hidden;
-  min-height:100%;
 }
 
 /* ---------- 背景色雾：低饱和、慢速 ---------- */
