@@ -21,6 +21,7 @@ import notes    from './views/notes.js';
 import player   from './views/player.js';
 import { initMini } from './views/player.js';
 import settings from './views/settings.js';
+import { initAiTeacher } from './ai-teacher.js?v=20261025';
 
 const ROUTES = [today, units, words, poems, midterm, finalRev, zhongkao, write, notes, player, settings];
 ROUTES.forEach(define);
@@ -81,6 +82,9 @@ if (!bootInfo.user) {
     return r ? r.name : id;
   });
   window.dispatchEvent(new CustomEvent('yanchi:view', { detail: { id: currentId() } }));
+
+  /* 右下角的 AI 老师：确认登录后才挂（没登录时它没有可用的接口） */
+  initAiTeacher();
 
   if (session.isAdmin()) {
     try {
