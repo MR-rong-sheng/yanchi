@@ -4,7 +4,7 @@
    ========================================================================== */
 import { $, $$, esc, ic, toast, store } from '../core.js';
 import { load } from '../data.js';
-import { tabBar, bindTabs, fillQuiz, choiceQuiz, listCard, chipRow } from '../review-kit.js';
+import { tabBar, bindTabs, fillQuiz, choiceQuiz, listCard, chipRow } from '../review-kit.js?v=20261025g';
 
 const TABS = [
   { id: 'std',   label: '课标对标', icon: 'shield' },

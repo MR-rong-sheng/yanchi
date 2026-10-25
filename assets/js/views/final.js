@@ -4,7 +4,7 @@
    ========================================================================== */
 import { $, $$, esc, ic, toast, store, download } from '../core.js';
 import { load } from '../data.js';
-import { tabBar, bindTabs, fillQuiz, listCard, chipRow, copyText } from '../review-kit.js';
+import { tabBar, bindTabs, fillQuiz, listCard, chipRow, copyText } from '../review-kit.js?v=20261025g';
 
 const TABS = [
   { id: 'map',    label: '考点地图', icon: 'today' },

@@ -166,6 +166,16 @@ await until(() => d.querySelectorAll('#view .rv-item').length > 0);
 const dictN = d.querySelectorAll('#view .rv-item').length;
 ok('期中默写自测：条目数等于数据', dictN === (await (await fetch('content/review9.json')).json()).dictation.length, dictN + ' 题');
 
+/* 切分区要自动回到页面顶端：分区条是 sticky 的，不滚就会停在上一个分区的中间 */
+w.scrollTo(0, 4000);
+await sleep(150);
+const yDeep = w.scrollY;
+[...d.querySelectorAll('#view .rv-tabs button')].find(b => b.textContent.includes('诗歌鉴赏')).click();
+await sleep(250);
+ok('切换分区自动回到页面顶端', yDeep > 500 && w.scrollY === 0, `切前 ${yDeep} → 切后 ${w.scrollY}`);
+[...d.querySelectorAll('#view .rv-tabs button')].find(b => b.textContent.includes('默写自测')).click();
+await until(() => d.querySelectorAll('#view .rv-item').length > 0);
+
 /* 5f-2. 按人教社 2024 审定版课本核对：单元归属、整套篇目、有没有旧版残留 */
 const UNITS = await (await fetch('content/units.json')).json();
 const R9 = await (await fetch('content/review9.json')).json();
@@ -215,8 +225,13 @@ ok('期中「整本书」分区：两本书 5 道自测', d.querySelectorAll('#v
    && d.querySelectorAll('#view .rv-det').length === 5,
    `${d.querySelectorAll('#view .rv-poem__t').length} 本 / ${d.querySelectorAll('#view .rv-det').length} 道`);
 
+w.scrollTo(0, 4000);
+await sleep(150);
+const yBeforeNav = w.scrollY;
 w.location.hash = '#/final';
 await until(() => text().includes('九年级期末复习') && d.querySelectorAll('#view .rv-tabs button').length === 8);
+await sleep(250);
+ok('切换顶栏板块也回到页面顶端', yBeforeNav > 500 && w.scrollY === 0, `切前 ${yBeforeNav} → 切后 ${w.scrollY}`);
 ok('期末复习：8 个分区', d.querySelectorAll('#view .rv-tabs button').length === 8,
    d.querySelectorAll('#view .rv-tabs button').length + ' 个');
 const F9 = await (await fetch('content/final9.json')).json();

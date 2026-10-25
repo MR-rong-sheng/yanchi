@@ -20,8 +20,16 @@ export function bindTabs(root, onPick) {
     btn.addEventListener('click', () => {
       $$('[data-tab]', root).forEach(b => b.setAttribute('aria-selected', String(b === btn)));
       onPick(btn.dataset.tab);
+      toTop();          /* 换板块回到最顶端，不然新板块会从上一个板块的滚动位置中间开始显示 */
     });
   });
+}
+
+/* 回到页面最顶端：window 与 #view 两种滚动容器都照顾到（换板块、换页都调它） */
+export function toTop() {
+  window.scrollTo(0, 0);
+  const v = document.getElementById('view');
+  if (v) v.scrollTop = 0;
 }
 
 /* ---------- 答案比对 ----------
