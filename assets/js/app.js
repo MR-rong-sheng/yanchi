@@ -110,7 +110,7 @@ $('#btn-user').addEventListener('click', () => {
       <div class="kv"><b>账号</b><span>${esc(u.name)}</span></div>
       <div class="kv"><b>权限</b><span>${isAdmin ? '管理员（可进后台）' : '普通（只能看前台）'}</span></div>
       <div class="kv"><b>上次登录</b><span>${u.last_login ? stamp(u.last_login * 1000) : '这是第一次'}</span></div>
-      <div class="kv"><b>站点版本</b><span>砚池 v${esc(bootInfo.version || '2.0')}</span></div>
+      <div class="kv"><b>站点版本</b><span>砚池 v${esc(bootInfo.version || '2.0')} · ${esc(bootInfo.build || '—')}</span></div>
       <hr class="hr" />
       <p style="font-size:12.5px;color:var(--ink-3);margin:12px 0">改密码后所有设备都要重新登录。</p>
       <label class="field" style="margin-bottom:10px">原密码
