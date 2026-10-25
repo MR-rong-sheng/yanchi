@@ -40,7 +40,7 @@ ok('模块脚本无致命错误（未出现错误页）', !text().includes('没�
 const routes = [
   ['today', '一日一字'], ['units', '课本 ·'], ['words', '字库'], ['poems', '篇目'],
   ['write', '题目 ·'], ['notes', '本地笔记本'], ['player', '本地音乐'], ['settings', '本机偏好'],
-  ['midterm', '九上期中复习'], ['zhongkao', '中考语文复习'],
+  ['midterm', '九上期中复习'], ['final', '九年级期末复习'], ['zhongkao', '中考语文复习'],
 ];
 for (const [id, marker] of routes) {
   w.location.hash = '#/' + id;
@@ -214,6 +214,22 @@ await until(() => d.querySelectorAll('#view .rv-det').length > 0);
 ok('期中「整本书」分区：两本书 5 道自测', d.querySelectorAll('#view .rv-poem__t').length === 2
    && d.querySelectorAll('#view .rv-det').length === 5,
    `${d.querySelectorAll('#view .rv-poem__t').length} 本 / ${d.querySelectorAll('#view .rv-det').length} 道`);
+
+w.location.hash = '#/final';
+await until(() => text().includes('九年级期末复习') && d.querySelectorAll('#view .rv-tabs button').length === 8);
+ok('期末复习：8 个分区', d.querySelectorAll('#view .rv-tabs button').length === 8,
+   d.querySelectorAll('#view .rv-tabs button').length + ' 个');
+const F9 = await (await fetch('content/final9.json')).json();
+ok('期末：九下六个单元 + 九上回看', F9.units.length === 7 && F9.units[0].id === 'u0', F9.units.length + ' 块');
+const fTab = [...d.querySelectorAll('#view .rv-tabs button')].find(b => b.textContent.includes('默写自测'));
+fTab.click();
+await until(() => d.querySelectorAll('#view .rv-item').length > 0);
+ok('期末默写：条目数与数据一致', d.querySelectorAll('#view .rv-item').length === F9.dictation.length,
+   d.querySelectorAll('#view .rv-item').length + ' 题');
+const fBook = [...d.querySelectorAll('#view .rv-tabs button')].find(b => b.textContent.includes('整本书'));
+fBook.click();
+await until(() => d.querySelectorAll('#view .rv-det').length > 0);
+ok('期末整本书：儒林外史 + 简·爱', d.querySelectorAll('#view .rv-poem__t').length === 2 && text().includes('儒林外史'));
 
 w.location.hash = '#/zhongkao';
 await until(() => text().includes('中考语文复习') && d.querySelectorAll('.rv-tabs button').length === 6);
@@ -397,7 +413,7 @@ if (want('顶栏')) {                                   /* 顶栏一组 */
 /* ---- 导航（前台八项；管理员登录时多挂一项「管理」） ---- */
 if (want('导航')) {
   const marks = { today: '一日一字', units: '课本 ·', words: '字库', poems: '篇目',
-    midterm: '九上期中复习', zhongkao: '中考语文复习',
+    midterm: '九上期中复习', final: '九年级期末复习', zhongkao: '中考语文复习',
     write: ['题目 ·', '结构建议'], notes: '本地笔记本', player: '本地音乐',
     settings: '本机偏好', admin: ['概览', '站点概览'] };
   const as = [...Dc.querySelectorAll('#nav a')];
