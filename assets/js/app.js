@@ -13,13 +13,15 @@ import today    from './views/today.js?v=20261007d';
 import units    from './views/units.js';
 import words    from './views/words.js?v=20261007d';
 import poems    from './views/poems.js';
+import midterm  from './views/midterm.js?v=20261025';
+import zhongkao from './views/zhongkao.js?v=20261025';
 import write    from './views/write.js';
 import notes    from './views/notes.js';
 import player   from './views/player.js';
 import { initMini } from './views/player.js';
 import settings from './views/settings.js';
 
-const ROUTES = [today, units, words, poems, write, notes, player, settings];
+const ROUTES = [today, units, words, poems, midterm, zhongkao, write, notes, player, settings];
 ROUTES.forEach(define);
 
 prefs.apply();

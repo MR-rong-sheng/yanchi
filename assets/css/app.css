@@ -397,6 +397,7 @@ mark.hit{ background:color-mix(in srgb, var(--accent) 26%, transparent); color:i
 .drop .ic{ width:18px; height:18px }
 
 /* 常驻小播放器 */
+.mini-player[hidden]{ display:none }
 .mini-player{
   position:fixed; right:18px; bottom:18px; z-index:85;
   display:flex; align-items:center; gap:11px; padding:8px 14px 8px 8px;

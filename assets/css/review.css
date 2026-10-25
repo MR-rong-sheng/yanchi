@@ -1,0 +1,248 @@
+/* ==========================================================================
+   砚池 · review.css —— 两个复习专区（九上期中 / 中考）的组件
+   只做「复习」这一件事需要的样式：分段导航、表格、折叠清单、自测、计划。
+   ========================================================================== */
+
+:root{ --rv-bad: #b0513c; }
+html[data-theme="dark"]{ --rv-bad: #e0907b; }
+
+/* ---------- 分段导航 ---------- */
+.rv-tabs{
+  position:sticky; top:70px; z-index:40;
+  display:flex; gap:4px; padding:6px; margin:4px 0 18px;
+  border-radius:var(--r); overflow-x:auto; scrollbar-width:none;
+  scroll-margin-top:80px;
+}
+.rv-tabs::-webkit-scrollbar{ display:none }
+.rv-tabs button{
+  display:flex; align-items:center; gap:7px; flex:0 0 auto;
+  border:0; background:transparent; font:inherit; font-size:13px; font-weight:500;
+  color:var(--ink-2); padding:9px 14px; border-radius:calc(var(--r) - 7px);
+  cursor:pointer; white-space:nowrap;
+  transition:color .22s var(--ease), background .22s var(--ease), box-shadow .22s var(--ease);
+}
+.rv-tabs button .ic{ width:16px; height:16px; opacity:.72 }
+.rv-tabs button:hover{ color:var(--ink); background:color-mix(in srgb, var(--ink) 6%, transparent) }
+.rv-tabs button[aria-selected="true"]{
+  color:var(--accent);
+  background:color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow:inset 0 0 0 1px var(--accent-line);
+}
+.rv-tabs button[aria-selected="true"] .ic{ opacity:1 }
+
+.rv-pane{ animation:enter .32s var(--ease) both }
+.rv-note{ margin-top:26px; font-size:12px; color:var(--ink-4); line-height:1.9 }
+.rv-tip{ margin-top:8px; font-size:12.5px; color:var(--ink-3); line-height:1.85 }
+.rv-strong{ font-weight:600; color:var(--ink) }
+
+/* ---------- 表格 ---------- */
+.rv-table{ overflow-x:auto; border-radius:var(--r-sm) }
+.rv-table table{ width:100%; border-collapse:collapse; font-size:13.5px; line-height:1.75 }
+.rv-table th{
+  text-align:left; font-weight:500; font-size:11.5px; letter-spacing:.14em;
+  color:var(--ink-3); padding:8px 12px; white-space:nowrap;
+  border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent);
+}
+.rv-table td{
+  padding:10px 12px; vertical-align:top; color:var(--ink-2);
+  border-bottom:1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.rv-table tr:last-child td{ border-bottom:0 }
+.rv-table tr:hover td{ background:color-mix(in srgb, var(--ink) 3%, transparent) }
+.rv-num{ font-variant-numeric:tabular-nums; white-space:nowrap; color:var(--ink) }
+.rv-goal{ font-size:12.5px; color:var(--ink-3) }
+.rv-word{ font-family:var(--font-serif); font-size:15px; color:var(--ink); white-space:nowrap }
+.rv-eg{ font-size:12.5px; color:var(--ink-3) }
+.rv-table .chip{ white-space:nowrap; margin:2px 2px 2px 0 }
+.rv-ok{ color:var(--accent); font-weight:500 }
+.rv-bad{ color:var(--rv-bad) }
+
+/* ---------- 折叠清单 ---------- */
+.rv-dets{ display:flex; flex-direction:column; gap:8px; margin-top:12px }
+.rv-det{
+  border:1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  border-radius:var(--r-sm); overflow:hidden;
+  background:color-mix(in srgb, var(--ink) 2%, transparent);
+}
+.rv-det summary{
+  display:flex; align-items:center; gap:12px; padding:12px 14px;
+  cursor:pointer; list-style:none;
+}
+.rv-det summary::-webkit-details-marker{ display:none }
+.rv-det summary:hover{ background:color-mix(in srgb, var(--ink) 4%, transparent) }
+.rv-det__t{ flex:1; min-width:0; font-family:var(--font-serif); font-size:14px; color:var(--ink); line-height:1.7 }
+.rv-det__s{ flex:0 1 auto; font-size:12px; color:var(--ink-3); text-align:right }
+.rv-det__go{ flex:0 0 auto; color:var(--ink-4); display:flex; transition:transform .28s var(--ease) }
+.rv-det[open] > summary .rv-det__go{ transform:rotate(180deg) }
+.rv-det__body{
+  padding:6px 16px 16px; display:flex; flex-direction:column; gap:12px;
+  border-top:1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.rv-det--topic{ background:transparent; margin-bottom:8px }
+.rv-det--topic .rv-det__body{ gap:14px }
+
+/* ---------- 自测 ---------- */
+.rv-quiz__bar{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  flex-wrap:wrap; margin-bottom:12px;
+}
+.rv-score{ font-size:12.5px; color:var(--ink-3); letter-spacing:.02em }
+.rv-score b{ color:var(--ink); font-variant-numeric:tabular-nums; font-weight:600 }
+.rv-items{ display:flex; flex-direction:column; gap:10px }
+.rv-item{ padding:14px 16px; border-radius:var(--r-sm) }
+.rv-item__head{ display:flex; align-items:center; gap:9px; margin-bottom:7px }
+.rv-idx{
+  width:22px; height:22px; flex:0 0 22px; display:grid; place-items:center;
+  border-radius:50%; font-size:11.5px; font-variant-numeric:tabular-nums;
+  background:color-mix(in srgb, var(--accent) 15%, transparent); color:var(--accent);
+}
+.rv-tag{ font-size:11.5px; letter-spacing:.08em; color:var(--ink-3) }
+.rv-hint{ font-size:12.5px; color:var(--ink-3); line-height:1.85; margin-bottom:6px }
+.rv-q{ font-family:var(--font-serif); font-size:14.5px; line-height:2; color:var(--ink) }
+.rv-inputrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:10px }
+.rv-inputrow input{
+  flex:1 1 220px; min-width:150px; font:inherit; font-size:14px;
+  padding:9px 12px; border-radius:10px; color:var(--ink); outline:none;
+  border:1px solid color-mix(in srgb, var(--ink) 15%, transparent);
+  background:color-mix(in srgb, var(--ink) 2%, transparent);
+  transition:border-color .2s var(--ease), box-shadow .2s var(--ease);
+}
+.rv-inputrow input::placeholder{ color:var(--ink-4) }
+.rv-inputrow input:focus{ border-color:var(--accent-line); box-shadow:0 0 0 3px var(--accent-soft) }
+
+.rv-fb{ margin-top:10px; padding:10px 12px; border-radius:10px; font-size:13px; line-height:1.9; color:var(--ink-2) }
+.rv-fb b{ color:var(--ink) }
+.rv-fb em{ font-style:normal; font-family:var(--font-serif); font-size:14.5px; color:var(--ink) }
+.rv-fb.is-ok{ background:color-mix(in srgb, var(--accent) 10%, transparent) }
+.rv-fb.is-bad{ background:color-mix(in srgb, var(--rv-bad) 11%, transparent) }
+.rv-fb.is-peek{ background:color-mix(in srgb, var(--ink) 4%, transparent) }
+.rv-fb__full{ color:var(--ink-2) }
+.rv-fb__easy{ color:var(--rv-bad); font-size:12px }
+.rv-item.is-right{ box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent) }
+.rv-item.is-wrong{ box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--rv-bad) 24%, transparent) }
+
+/* 选择题 */
+.rv-opts{ display:flex; flex-direction:column; gap:6px; margin-top:10px }
+.rv-opt{
+  display:flex; align-items:flex-start; gap:10px; width:100%;
+  text-align:left; font:inherit; font-size:13.5px; line-height:1.8;
+  color:var(--ink-2); padding:9px 12px; border-radius:10px; cursor:pointer;
+  border:1px solid color-mix(in srgb, var(--ink) 9%, transparent);
+  background:transparent;
+  transition:background .2s var(--ease), border-color .2s var(--ease), opacity .2s var(--ease);
+}
+.rv-opt i{ flex:0 0 auto; font-style:normal; font-family:var(--font-serif); color:var(--ink-3); min-width:1.1em }
+.rv-opt:hover{ background:color-mix(in srgb, var(--ink) 4%, transparent); border-color:color-mix(in srgb, var(--ink) 18%, transparent) }
+.rv-opt.is-ok{ background:color-mix(in srgb, var(--accent) 12%, transparent); border-color:var(--accent-line); color:var(--ink) }
+.rv-opt.is-ok i{ color:var(--accent) }
+.rv-opt.is-bad{ background:color-mix(in srgb, var(--rv-bad) 12%, transparent); border-color:color-mix(in srgb, var(--rv-bad) 34%, transparent) }
+.rv-opt.is-bad i{ color:var(--rv-bad) }
+.rv-opt.is-dim{ opacity:.46 }
+.rv-opt[aria-disabled="true"]{ cursor:default }
+
+/* ---------- 七天计划 ---------- */
+.rv-plan{ display:flex; flex-direction:column; gap:8px; margin-top:6px }
+.rv-day{
+  position:relative; display:flex; gap:12px; align-items:flex-start;
+  padding:12px 14px; border-radius:var(--r-sm); cursor:pointer;
+  border:1px solid color-mix(in srgb, var(--ink) 9%, transparent);
+  transition:background .22s var(--ease), border-color .22s var(--ease);
+}
+.rv-day:hover{ background:color-mix(in srgb, var(--ink) 3%, transparent) }
+.rv-day input{ position:absolute; opacity:0; width:0; height:0 }
+.rv-day__box{
+  flex:0 0 22px; width:22px; height:22px; margin-top:2px; display:grid; place-items:center;
+  border-radius:7px; color:transparent;
+  border:1px solid color-mix(in srgb, var(--ink) 24%, transparent);
+  transition:background .2s var(--ease), border-color .2s var(--ease), color .2s var(--ease);
+}
+.rv-day__box .ic{ width:14px; height:14px }
+.rv-day input:checked + .rv-day__box{ background:var(--accent); border-color:var(--accent); color:#fff }
+.rv-day.is-done{ background:color-mix(in srgb, var(--accent) 7%, transparent); border-color:var(--accent-line) }
+.rv-day__body{ display:flex; flex-direction:column; gap:5px; font-size:13px; color:var(--ink-2); min-width:0 }
+.rv-day__t{ display:flex; gap:10px; align-items:baseline; flex-wrap:wrap }
+.rv-day__t b{ font-family:var(--font-serif); font-size:14px; color:var(--ink) }
+.rv-day__t i{ font-style:normal; font-size:12.5px; color:var(--accent) }
+.rv-day__list{ display:flex; flex-direction:column; gap:2px; font-size:12.5px; line-height:1.8 }
+.rv-day__check{ font-size:12px; color:var(--ink-3) }
+.rv-plan__foot{ display:flex; align-items:center; gap:12px; margin-top:14px; font-size:12.5px; color:var(--ink-3) }
+.rv-bar{ flex:1; height:6px; border-radius:999px; overflow:hidden; background:color-mix(in srgb, var(--ink) 8%, transparent) }
+.rv-bar i{ display:block; height:100%; border-radius:999px; background:var(--accent); transition:width .45s var(--ease) }
+
+/* ---------- 固定两列（auto-fit 在宽屏会变成三列，四张卡会排成 3+1） ---------- */
+.rv-2col{ display:grid; gap:14px; grid-template-columns:repeat(2,minmax(0,1fr)) }
+@media (max-width: 760px){ .rv-2col{ grid-template-columns:1fr } }
+
+/* ---------- 核心素养卡 ---------- */
+.rv-core{
+  display:flex; flex-direction:column; gap:8px; padding:14px;
+  border-radius:var(--r-sm);
+  border:1px solid color-mix(in srgb, var(--ink) 9%, transparent);
+}
+.rv-core__n{ font-family:var(--font-serif); font-size:16px; color:var(--accent) }
+.rv-core__d{ font-size:13px; line-height:1.85; color:var(--ink-2) }
+
+/* ---------- 三轮复习 ---------- */
+.rv-rounds{ display:flex; flex-direction:column; gap:14px; margin-top:6px }
+.rv-round{ padding-left:14px; border-left:2px solid var(--accent-line) }
+.rv-round__head{ display:flex; gap:10px; align-items:flex-start; margin-bottom:8px }
+.rv-round__n{
+  flex:0 0 24px; width:24px; height:24px; display:grid; place-items:center;
+  border-radius:50%; font-size:12px; color:var(--accent);
+  background:color-mix(in srgb, var(--accent) 13%, transparent);
+}
+.rv-round__t{ font-family:var(--font-serif); font-size:15px; color:var(--ink) }
+.rv-round__s{ font-size:12.5px; color:var(--ink-3); line-height:1.8; margin-top:2px }
+
+/* ---------- 诗歌卡 ---------- */
+.rv-poem__head{ display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:10px }
+.rv-poem__t{ font-family:var(--font-serif); font-size:18px; color:var(--ink); line-height:1.6 }
+.rv-poem__s{ font-size:12.5px; color:var(--ink-3); margin-top:2px }
+.rv-emotion{
+  font-family:var(--font-serif); font-size:14.5px; line-height:2; color:var(--ink);
+  padding:10px 14px; border-radius:10px;
+  background:color-mix(in srgb, var(--accent) 7%, transparent);
+  border-left:2px solid var(--accent-line);
+}
+.rv-quotes{ display:flex; flex-direction:column; gap:8px; margin-top:6px }
+.rv-quote{
+  font-family:var(--font-serif); font-size:14.5px; line-height:2.1; color:var(--ink-2);
+  padding:8px 12px; border-radius:10px;
+  background:color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.rv-quote b{ color:var(--ink) }
+
+/* ---------- 答题路径 ---------- */
+.rv-steps{ display:flex; flex-direction:column; gap:14px; margin-top:6px }
+.rv-step{ display:flex; gap:12px; align-items:flex-start }
+.rv-step__n{
+  flex:0 0 26px; width:26px; height:26px; display:grid; place-items:center;
+  border-radius:9px; font-size:12px; color:var(--accent); font-variant-numeric:tabular-nums;
+  background:color-mix(in srgb, var(--accent) 13%, transparent);
+}
+.rv-step__t{ font-family:var(--font-serif); font-size:14.5px; color:var(--ink) }
+.rv-step__d{ font-size:13px; line-height:1.85; color:var(--ink-2); margin-top:3px }
+.rv-step__tip{ font-size:12.5px; line-height:1.85; color:var(--ink-3); margin-top:3px }
+
+/* ---------- 分段器补齐 ---------- */
+.rv-seg{ flex-wrap:wrap; max-width:100% }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 760px){
+  .rv-tabs{ position:static; margin-bottom:12px }
+  .rv-tabs button{ padding:8px 12px; font-size:12.5px }
+  .rv-table table{ min-width:540px }
+  .rv-det__s{ display:none }
+  .rv-poem__head{ flex-direction:column; align-items:flex-start }
+  .rv-inputrow input{ flex:1 1 100% }
+}
+
+/* ---------- 打印：只留内容 ---------- */
+@media print{
+  .topbar, .foot, .rv-tabs, .mini-player, .rv-quiz__bar, .btn-row, .btn, .toast{ display:none !important }
+  .stage{ max-width:none; padding:0 }
+  body{ background:#fff }
+  .card.glass, .rv-item, .glass{ background:#fff !important; box-shadow:none !important; backdrop-filter:none !important; border:1px solid #ddd !important }
+  .rv-det{ break-inside:avoid }
+  .rv-pane{ animation:none }
+}

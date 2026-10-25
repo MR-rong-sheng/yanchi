@@ -33,13 +33,14 @@ const WORDS = await (await fetch('content/words.json')).json();
 await until(() => d.documentElement && d.documentElement.dataset.ready === '1', 600);  // 等内核自报就绪
 await until(() => d.querySelectorAll('#nav a').length > 0, 300);
 const navN = d.querySelectorAll('#nav a').length;
-ok('导航生成（前台 8 项，管理员多一项「管理」）', navN >= 8, '实际 ' + navN);
+ok('导航生成（前台 10 项，管理员多一项「管理」）', navN >= 10, '实际 ' + navN);
 ok('模块脚本无致命错误（未出现错误页）', !text().includes('没能打开'), text().slice(0, 60).replace(/\s+/g, ' '));
 
 /* 2. 八个视图都能打开 */
 const routes = [
   ['today', '一日一字'], ['units', '课本 ·'], ['words', '字库'], ['poems', '篇目'],
   ['write', '题目 ·'], ['notes', '本地笔记本'], ['player', '本地音乐'], ['settings', '本机偏好'],
+  ['midterm', '九上期中复习'], ['zhongkao', '中考语文复习'],
 ];
 for (const [id, marker] of routes) {
   w.location.hash = '#/' + id;
@@ -153,6 +154,53 @@ ok('课外古诗词诵读可跳原文', !!d.querySelector('#drawer .btn-row .btn
    (d.querySelector('#drawer .btn-row .btn') || {}).textContent || '无跳转按钮');
 d.querySelector('#drawer [data-close]').click();
 await sleep(150);
+
+/* 5f. 复习专区：期中 / 中考 */
+w.location.hash = '#/midterm';
+await until(() => text().includes('九上期中复习') && d.querySelectorAll('.rv-tabs button').length === 8);
+ok('期中复习：8 个分区', d.querySelectorAll('#view .rv-tabs button').length === 8,
+   d.querySelectorAll('#view .rv-tabs button').length + ' 个');
+const dictTab = [...d.querySelectorAll('#view .rv-tabs button')].find(b => b.textContent.includes('默写自测'));
+dictTab.click();
+await until(() => d.querySelectorAll('#view .rv-item').length > 0);
+const dictN = d.querySelectorAll('#view .rv-item').length;
+ok('期中默写自测：条目数等于数据', dictN === (await (await fetch('content/review9.json')).json()).dictation.length, dictN + ' 题');
+
+/* 填对第一空 → 判正确；填错第二空 → 判错误并给出答案 */
+const it1 = d.querySelectorAll('#view .rv-item')[0];
+it1.querySelector('[data-input]').value = (await (await fetch('content/review9.json')).json()).dictation[0].a;
+it1.querySelector('[data-one]').click();
+await sleep(150);
+ok('默写：写对判正确', it1.classList.contains('is-right'), it1.querySelector('[data-fb]').textContent.slice(0, 24));
+
+const it2 = d.querySelectorAll('#view .rv-item')[1];
+it2.querySelector('[data-input]').value = '不知道';
+it2.querySelector('[data-one]').click();
+await sleep(150);
+ok('默写：写错判错误并给答案', it2.classList.contains('is-wrong') && it2.querySelector('[data-fb]').textContent.includes('答案'));
+ok('默写：进度写进本机存储', Object.keys(JSON.parse(w.localStorage.getItem('yanchi:review9.dict') || '{}')).length === 2);
+d.querySelector('#view [data-reset]').click();
+await sleep(150);
+ok('默写：重做清空', d.querySelector('#view .rv-item [data-input]').value === '');
+
+w.location.hash = '#/zhongkao';
+await until(() => text().includes('中考语文复习') && d.querySelectorAll('.rv-tabs button').length === 6);
+ok('中考复习：6 个分区', d.querySelectorAll('#view .rv-tabs button').length === 6,
+   d.querySelectorAll('#view .rv-tabs button').length + ' 个');
+const topicTab = [...d.querySelectorAll('#view .rv-tabs button')].find(b => b.textContent.includes('专题方法'));
+topicTab.click();
+await until(() => d.querySelectorAll('#view .rv-det').length > 0);
+ok('中考专题：15 个专题', d.querySelectorAll('#view .rv-det').length === 15,
+   d.querySelectorAll('#view .rv-det').length + ' 个');
+const drillTab = [...d.querySelectorAll('#view .rv-tabs button')].find(b => b.textContent.includes('分项自测'));
+drillTab.click();
+await until(() => d.querySelectorAll('#view .rv-opt').length > 0);
+ok('中考验测：选择 + 默写都在', d.querySelectorAll('#view .rv-item').length === 33,
+   d.querySelectorAll('#view .rv-item').length + ' 题');
+const opt = d.querySelectorAll('#view .rv-item')[0].querySelectorAll('.rv-opt')[0];
+opt.click();
+await sleep(150);
+ok('中考验测：点选项立即判分', !!d.querySelector('#view .rv-opt.is-ok, #view .rv-opt.is-bad'));
 
 /* 6. 写作：选一道题、输入草稿、自动保存 */
 w.location.hash = '#/write';
@@ -317,6 +365,7 @@ if (want('顶栏')) {                                   /* 顶栏一组 */
 /* ---- 导航（前台八项；管理员登录时多挂一项「管理」） ---- */
 if (want('导航')) {
   const marks = { today: '一日一字', units: '课本 ·', words: '字库', poems: '篇目',
+    midterm: '九上期中复习', zhongkao: '中考语文复习',
     write: ['题目 ·', '结构建议'], notes: '本地笔记本', player: '本地音乐',
     settings: '本机偏好', admin: ['概览', '站点概览'] };
   const as = [...Dc.querySelectorAll('#nav a')];
