@@ -82,7 +82,7 @@ export default {
       const plan = store.get(PLAN_KEY, {}) || {};
       return `
         <div class="card glass">
-          <div class="card__label">卷面怎么分（120 分卷 · 参考）</div>
+          <div class="card__label">卷面怎么分（${d.meta.score || 140} 分卷 · 参考）</div>
           <div class="rv-table">
             <table>
               <thead><tr><th>部分</th><th>分值</th><th>建议用时</th><th>考什么</th><th>目标</th></tr></thead>
