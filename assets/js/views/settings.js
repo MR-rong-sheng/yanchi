@@ -1,6 +1,7 @@
 /* 设置 —— 外观、数据、以及这个框架怎么往下长 */
-import { $, $$, esc, ic, toast, store, prefs, download } from '../core.js';
+import { $, $$, esc, ic, toast, store, prefs, download, session } from '../core.js';
 import { listNotes } from '../notes-store.js';
+import { admin } from '../api.js';
 
 const ACCENTS = [
   { id: 'qing', name: '青', css: 'hsl(196 34% 42%)' },
@@ -70,6 +71,33 @@ export default {
             <button class="btn btn--ghost" data-wipe>${ic('trash')}清空全部</button>
             <input type="file" accept="application/json,.json" data-file hidden />
           </div>
+        </div>
+      </div>
+
+      <div class="card glass spec" data-ai-card style="margin-top:16px" hidden>
+        <div class="card__label">AI 老师（DeepSeek）</div>
+        <p style="color:var(--ink-2);font-size:13px;line-height:1.7;margin-bottom:12px">
+          右下角那个「师」字按钮。Key 只写在服务器的 <code>.private/ai.json</code> 里：
+          不经过浏览器、不进仓库、也不随备份导出。想换模型或临时关掉，都在这里。
+        </p>
+        <div class="settings-row">
+          <div>
+            <div class="t">当前状态</div>
+            <div class="d" data-ai-state>读取中…</div>
+          </div>
+          <div class="btn-row"><button class="btn btn--sm" data-ai-toggle>开关</button></div>
+        </div>
+        <label class="field" style="margin-top:10px;border-radius:12px">
+          <span style="font-size:12.5px;color:var(--ink-3);flex:0 0 auto">Key</span>
+          <input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…（留空表示不改）" />
+        </label>
+        <label class="field" style="margin-top:8px;border-radius:12px">
+          <span style="font-size:12.5px;color:var(--ink-3);flex:0 0 auto">模型</span>
+          <input id="ai-model" type="text" autocomplete="off" spellcheck="false" placeholder="deepseek-chat" />
+        </label>
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn btn--primary btn--sm" data-ai-save>${ic('check')}保存</button>
+          <button class="btn btn--ghost btn--sm" data-ai-clear>${ic('trash')}清除 Key</button>
         </div>
       </div>
 
@@ -150,5 +178,63 @@ export default {
       toast('已恢复初始状态');
       setTimeout(() => ctx.render(), 400);
     });
+
+    /* ---- AI 老师：只有管理员能配（Key 落在服务器，普通账号看不到这一块） ---- */
+    const aiCard = $('[data-ai-card]', root);
+    if (session.isAdmin() && aiCard) {
+      aiCard.hidden = false;
+      const stateEl = $('[data-ai-state]', root);
+      const toggleBtn = $('[data-ai-toggle]', root);
+      const keyInput = $('#ai-key', root);
+      const modelInput = $('#ai-model', root);
+      let cur = null;
+
+      const paintAi = st => {
+        cur = st;
+        const bits = [st.ready ? '已接上 · ' + st.model : (st.enabled ? '还没配好' : '已关闭')];
+        if (st.key_tail) bits.push('Key …' + st.key_tail);
+        stateEl.textContent = bits.join(' · ') + (st.ready ? '' : '（' + (st.reason || '缺 Key') + '）');
+        toggleBtn.textContent = st.enabled ? '先关掉' : '打开';
+        if (st.model) modelInput.value = st.model;
+        if (st.base_url) modelInput.title = st.base_url;
+      };
+
+      admin.ai().then(paintAi).catch(e => { stateEl.textContent = '读不到状态：' + (e.message || e); });
+
+      $('[data-ai-save]', root).addEventListener('click', async e => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+          const patch = { model: modelInput.value.trim() || 'deepseek-chat' };
+          const k = keyInput.value.trim();
+          if (k) patch.api_key = k;
+          paintAi(await admin.aiSave(patch));
+          keyInput.value = '';
+          toast(cur.ready ? '已保存。去右下角问一句试试' : '已保存，但还差 Key');
+        } catch (err) {
+          toast(err.message || '保存失败');
+        }
+        btn.disabled = false;
+      });
+
+      toggleBtn.addEventListener('click', async () => {
+        try {
+          paintAi(await admin.aiSave({ enabled: !(cur && cur.enabled) }));
+          toast(cur.enabled ? 'AI 老师已打开' : 'AI 老师已关闭');
+        } catch (err) {
+          toast(err.message || '改不动');
+        }
+      });
+
+      $('[data-ai-clear]', root).addEventListener('click', async () => {
+        if (!confirm('清除服务器上保存的 DeepSeek Key？清掉之后右下角的老师会停用。')) return;
+        try {
+          paintAi(await admin.aiSave({ clear_key: true }));
+          toast('Key 已清除');
+        } catch (err) {
+          toast(err.message || '清除失败');
+        }
+      });
+    }
   },
 };

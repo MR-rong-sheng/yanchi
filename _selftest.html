@@ -675,6 +675,27 @@ if (want('设置')) {
   }
 }
 
+/* ---- AI 老师（右下角） ---- */
+if (want('AI老师', 'AI')) {
+  const fab = Dc.querySelector('#ai-fab');
+  ok('AI 老师：右下角入口存在', !!fab);
+  if (fab) {
+    fab.click(); await sleep(350);
+    const panel = Dc.querySelector('#ai-panel');
+    ok('AI 老师：面板能打开', !!panel && !panel.hidden);
+    ok('AI 老师：开口第一句是老师的自我介绍', !!panel && /语文老师/.test(panel.textContent));
+    let st = null;
+    try { st = await (await fetch('/api/ai/status')).json(); } catch (e) { /* 接口挂了下面这条会失败 */ }
+    ok('AI 老师：/api/ai/status 可用', !!st && st.ok === true, st ? ('模型 ' + st.model + '，' + (st.ready ? '已接上' : st.reason)) : '拿不到状态');
+    const warn = !!Dc.querySelector('#ai-panel .ai-note--warn');
+    ok('AI 老师：面板里的提示与配置一致', !!st && (st.ready ? !warn : warn),
+       st && st.ready ? '已接上，不该有警告条' : '未配 Key，应给出提示条');
+    Dc.querySelector('#ai-close').click(); await sleep(250);
+    audited++;
+    ok('AI 老师：能收起', Dc.querySelector('#ai-panel').hidden);
+  }
+}
+
 /* ---- 11. 播放器 ---- */
 if (want('播放')) {
   await goRoute('player', '本地音乐');

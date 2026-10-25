@@ -51,6 +51,9 @@ export async function changePassword(oldPw, newPw) {
   return post('/api/password', { old: oldPw, new: newPw });
 }
 
+/** AI 老师状态：{ ready, enabled, model, reason } */
+export const aiStatus = () => get('/api/ai/status');
+
 /* ---------- 后台 ---------- */
 export const admin = {
   overview: () => get('/api/admin/overview'),
@@ -74,4 +77,7 @@ export const admin = {
   sessions: () => get('/api/admin/sessions'),
   killSession: (id) => post('/api/admin/sessions/kill', { id }),
   audit: (limit = 100) => get('/api/admin/audit?limit=' + limit),
+
+  ai: () => get('/api/admin/ai'),
+  aiSave: (patch) => post('/api/admin/ai', patch),
 };

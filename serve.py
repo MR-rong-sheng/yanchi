@@ -15,6 +15,7 @@
     python serve.py passwd <名>
     python serve.py deluser <名>
     python serve.py dev on|off          自检用的临时直通开关（默认关）
+    python serve.py ai [status|key|model|on|off|test]   AI 老师（DeepSeek）的配置与连通性测试
     python serve.py archive [账号] [N]   看操作存档（不带参数=列出所有存档）
     python serve.py kick                清掉全部登录会话
 """
@@ -36,6 +37,8 @@ import re
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse, parse_qs, urlencode
+import urllib.request
+import urllib.error
 
 # ---------------------------------------------------------------- 常量与路径
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -289,6 +292,147 @@ def setting_set(key, value):
     c.execute('INSERT INTO settings(key,value) VALUES(?,?) '
               'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, str(value)))
     c.commit()
+
+
+# ---------------------------------------------------------------- AI 老师（DeepSeek 代理）
+# 密钥只落 .private/ai.json（.private/ 已在 .gitignore 里）：不进仓库、不进浏览器、不进共享库。
+# 之所以必须走服务端代理：浏览器里放 Key 等于公开（任何访客 F12 就能抄走并刷你的余额）。
+AICFG = os.path.join(PRIV, 'ai.json')
+AI_DEFAULT_BASE = 'https://api.deepseek.com'
+AI_DEFAULT_MODEL = 'deepseek-chat'
+AI_TIMEOUT = 150          # 模型偶尔慢，给足；但客户端断开就立刻停
+AI_MSG_MAX = 30           # 一次最多带多少条历史
+AI_CHARS_MAX = 6000       # 单条消息上限
+AI_TOTAL_MAX = 24000      # 整轮提示词上限
+AI_RATE_MIN = 20          # 每分钟最多问几次
+AI_DAY_MAX = 300          # 每人每天最多几轮（防跑飞账单）
+
+AI_SYS = """你是「砚池」里的语文老师。砚池是一位学生自己用的语文学习工具：字词、古诗文、现代文阅读、写作。
+回答请守住这几条：
+1. 先给结论或一句点拨，再展开；能用三句说清就别写十条。
+2. 讲字要讲本义、常见引申义，各配一个短例句；讲诗句先落在字面上，再讲它在全篇里的位置，不空谈意境。
+3. 学生拿自己的句子或作文来改，只指出最值得改的一两处，说清错在哪、怎么改成更好，不要整篇代写。
+4. 记不准的出处、作者年代、版本异文，直说「记不准」，不要编。
+5. 用简体中文，语气像坐在旁边的老师：平和、具体，不夸张，不用表情符号，不用「亲」「宝子」这类称呼。
+6. 不主动塞答题模板和套路；学生明确要考试技巧时再给。
+7. 拿不准学生问的是哪段原文时，先问清，不要臆测。"""
+
+_AI_HITS = {}             # uid -> [时间戳]，每分钟限流（进程内，重启即清）
+_AI_DAY = {}              # uid -> [日期字符串, 次数]
+_ai_lock = threading.Lock()
+
+
+def ai_cfg():
+    """读 AI 配置：.private/ai.json 优先，环境变量 DEEPSEEK_API_KEY 兜底。每次请求都读，改完即时生效。"""
+    cfg = {'api_key': '', 'base_url': AI_DEFAULT_BASE, 'model': AI_DEFAULT_MODEL,
+           'enabled': True, 'temperature': 0.6, 'max_tokens': 1200, 'system': ''}
+    try:
+        with open(AICFG, encoding='utf-8') as f:
+            saved = json.load(f)
+        if isinstance(saved, dict):
+            for k in ('api_key', 'base_url', 'model', 'enabled', 'temperature', 'max_tokens', 'system'):
+                if k in saved and saved[k] is not None:
+                    cfg[k] = saved[k]
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        sys.stderr.write(f'[ai] 配置文件读不出来，用默认值：{e}\n')
+    if not cfg.get('api_key'):
+        cfg['api_key'] = os.environ.get('DEEPSEEK_API_KEY', '')
+    cfg['enabled'] = bool(cfg['enabled'])
+    cfg['max_tokens'] = max(64, min(4096, int(cfg.get('max_tokens') or 1200)))
+    try:
+        cfg['temperature'] = max(0.0, min(1.5, float(cfg.get('temperature', 0.6))))
+    except Exception:
+        cfg['temperature'] = 0.6
+    cfg['base_url'] = (cfg.get('base_url') or AI_DEFAULT_BASE).rstrip('/')
+    cfg['model'] = (cfg.get('model') or AI_DEFAULT_MODEL).strip()
+    return cfg
+
+
+def ai_save(patch):
+    """合并写入 ai.json（原子替换 + 收紧权限）。空字符串表示「不改这个字段」。"""
+    cur = {}
+    try:
+        with open(AICFG, encoding='utf-8') as f:
+            cur = json.load(f) or {}
+    except Exception:
+        cur = {}
+    if not isinstance(cur, dict):
+        cur = {}
+    for k in ('api_key', 'base_url', 'model', 'temperature', 'max_tokens', 'system', 'enabled'):
+        if k in patch and patch[k] is not None:
+            if k == 'api_key' and patch[k] == '':
+                continue                     # 没填就保持原 Key，避免误清
+            cur[k] = patch[k]
+    if patch.get('clear_key'):
+        cur['api_key'] = ''
+    os.makedirs(PRIV, exist_ok=True)
+    tmp = AICFG + '.tmp'
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        json.dump(cur, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, AICFG)
+    try:
+        os.chmod(AICFG, 0o600)
+    except Exception:
+        pass
+    return cur
+
+
+def ai_status(cfg, admin=False):
+    out = {'ok': True, 'ready': bool(cfg['api_key']) and cfg['enabled'],
+           'enabled': cfg['enabled'], 'model': cfg['model'],
+           'reason': ('' if cfg['api_key'] else '还没填 API Key') if cfg['enabled'] else 'AI 老师已关闭'}
+    if admin:
+        out['base_url'] = cfg['base_url']
+        out['key_tail'] = cfg['api_key'][-4:] if cfg['api_key'] else ''
+        out['max_tokens'] = cfg['max_tokens']
+        out['temperature'] = cfg['temperature']
+    return out
+
+
+def ai_throttle(uid):
+    """每人每分钟/每天限次。超了抛 429 —— 公网上一条被抄走的会话也不至于把余额刷穿。"""
+    now = time.time()
+    today = time.strftime('%Y-%m-%d')
+    with _ai_lock:
+        hits = [t for t in _AI_HITS.get(int(uid), []) if now - t < 60]
+        if len(hits) >= AI_RATE_MIN:
+            raise ApiError(429, f'问得有点急，喘口气再来（每分钟最多 {AI_RATE_MIN} 次）')
+        hits.append(now)
+        _AI_HITS[int(uid)] = hits
+        day = _AI_DAY.get(int(uid))
+        if not day or day[0] != today:
+            day = [today, 0]
+        if day[1] >= AI_DAY_MAX:
+            _AI_DAY[int(uid)] = day
+            raise ApiError(429, f'今天的额度用完了（{AI_DAY_MAX} 次），明天再来')
+        day[1] += 1
+        _AI_DAY[int(uid)] = day
+
+
+def ai_error_text(code, raw):
+    """把上游错误翻成学生看得懂的一句话（不泄露 Key，也不吐整段 JSON）。"""
+    msg = ''
+    try:
+        j = json.loads(raw)
+        msg = str((j.get('error') or {}).get('message') or j.get('message') or '')
+    except Exception:
+        msg = (raw or '')[:200]
+    if code in (401, 403):
+        return 'API Key 不对或没有权限（管理员在「设置 → AI 老师」里核对一下）'
+    if code == 402:
+        return 'DeepSeek 账户余额不够了，充值后再试'
+    if code == 429:
+        return 'DeepSeek 那边说请求太频繁，等几秒再问'
+    if code == 404:
+        return '模型名或接口地址不对：' + (msg or 'HTTP 404')
+    if code == 400:
+        return '这次的请求被拒了：' + (msg or 'HTTP 400')
+    if code >= 500:
+        return 'DeepSeek 服务端出错了（HTTP %d），过一会儿再试' % code
+    return (msg or '上游返回 HTTP %d' % code)[:220]
 
 
 # ---------------------------------------------------------------- 操作存档（每个账号一份）
@@ -749,6 +893,9 @@ class Handler(SimpleHTTPRequestHandler):
         ua = self.headers.get('User-Agent', '')
         me = self.user()
         try:
+            # AI 老师自己写响应（流式），不走 route() 的 JSON 返回
+            if method == 'POST' and path == '/api/ai/chat':
+                return self.ai_chat(body, me, ip, ua)
             res, code, cookie = self.route(method, path, body, me, ip, ua)
         except ApiError as e:
             return self.send_json({'ok': False, 'error': e.msg}, e.code)
@@ -763,6 +910,158 @@ class Handler(SimpleHTTPRequestHandler):
         if me['role'] != 'admin':
             raise ApiError(403, '需要管理员权限')
         return me
+
+    # ---- AI 老师：DeepSeek 代理（密钥不出服务端） ----
+    def ai_prompt(self, body, cfg):
+        """洗一遍前端来的消息，拼上服务端系统提示词。客户端永远无法注入 system。"""
+        raw = body.get('messages')
+        if not isinstance(raw, list) or not raw:
+            raise ApiError(400, '没有要问的内容')
+        msgs, total = [], 0
+        for m in raw[-AI_MSG_MAX:]:
+            if not isinstance(m, dict):
+                continue
+            role, content = m.get('role'), m.get('content')
+            if role not in ('user', 'assistant') or not isinstance(content, str):
+                continue
+            content = content.strip()
+            if not content:
+                continue
+            if len(content) > AI_CHARS_MAX:
+                content = content[:AI_CHARS_MAX] + '…'
+            total += len(content)
+            msgs.append({'role': role, 'content': content})
+        if not msgs or msgs[-1]['role'] != 'user':
+            raise ApiError(400, '最后一条得是你的问题')
+        if total > AI_TOTAL_MAX:
+            raise ApiError(413, '这一段太长了，分几次问吧')
+        sys_txt = AI_SYS
+        if (cfg.get('system') or '').strip():
+            sys_txt += '\n\n【这位学生的额外交代】' + str(cfg['system']).strip()[:1200]
+        ctx = body.get('context') if isinstance(body.get('context'), dict) else {}
+        page = str(ctx.get('page') or '').strip()[:40]
+        sel = str(ctx.get('selection') or '').strip()[:400]
+        bits = []
+        if page:
+            bits.append('学生此刻在「%s」页。' % page)
+        if sel:
+            bits.append('页面上被选中的原文是：\n"""\n%s\n"""\n'
+                        '（学生说的「这段」「这句」多半指它，可以据此理解。）' % sel)
+        if bits:
+            sys_txt += '\n\n【此刻的上下文】' + ''.join(bits)
+        return [{'role': 'system', 'content': sys_txt}] + msgs
+
+    def sse(self, obj):
+        """写一条 SSE 事件；客户端已经断开就返回 False（不要再读上游了）。"""
+        try:
+            self.wfile.write(b'data: ' + json.dumps(obj, ensure_ascii=False).encode('utf-8') + b'\n\n')
+            self.wfile.flush()
+            return True
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return False
+
+    def ai_chat(self, body, me, ip, ua):
+        """POST /api/ai/chat：校验 → 限流 → 转发 DeepSeek → 流式回吐。自己写响应，返回 None。"""
+        if not me:
+            raise ApiError(401, '请先登录')
+        cfg = ai_cfg()
+        if not cfg['enabled']:
+            raise ApiError(503, 'AI 老师现在是关着的（管理员可在「设置 → AI 老师」里打开）')
+        if not cfg['api_key']:
+            raise ApiError(503, '还没填 DeepSeek 的 API Key（管理员在「设置 → AI 老师」里填一次即可）')
+        prompt = self.ai_prompt(body, cfg)
+        ai_throttle(me['id'])
+        want_stream = body.get('stream') is not False
+        q_prev = prompt[-1]['content'].replace('\n', ' ')[:80]
+
+        payload = {'model': cfg['model'], 'messages': prompt, 'stream': want_stream,
+                   'temperature': cfg['temperature'], 'max_tokens': cfg['max_tokens']}
+        req = urllib.request.Request(
+            cfg['base_url'] + '/chat/completions',
+            data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
+            headers={'Content-Type': 'application/json',
+                     'Accept': 'text/event-stream' if want_stream else 'application/json',
+                     'Authorization': 'Bearer ' + cfg['api_key']},
+            method='POST')
+        try:
+            resp = urllib.request.urlopen(req, timeout=AI_TIMEOUT)
+        except urllib.error.HTTPError as e:
+            txt = ai_error_text(e.code, e.read().decode('utf-8', 'replace'))
+            audit('ai.fail', f'HTTP {e.code} · {txt} · 问：{q_prev}', me['name'], ip, ua)
+            raise ApiError(e.code if e.code in (400, 401, 402, 404, 429) else 502, txt)
+        except Exception as e:
+            audit('ai.fail', f'{type(e).__name__}: {e} · 问：{q_prev}', me['name'], ip, ua)
+            raise ApiError(502, f'连不上 DeepSeek（{type(e).__name__}），先看看本机网络')
+
+        # 非流式：给命令行 / 自检用，一条 JSON 拿全部答案
+        if not want_stream:
+            raw = resp.read().decode('utf-8', 'replace')
+            resp.close()
+            try:
+                j = json.loads(raw)
+                answer = j['choices'][0]['message']['content']
+            except Exception:
+                text = ai_error_text(502, raw)
+                audit('ai.fail', f'解析失败 · {text}', me['name'], ip, ua)
+                raise ApiError(502, text)
+            audit('ai.chat', f'问：{q_prev} · 答 {len(answer)} 字 · {cfg["model"]}', me['name'], ip, ua)
+            return self.send_json({'ok': True, 'answer': answer, 'model': cfg['model']})
+
+        # 流式：上游 SSE → 逐段转发（前端边收边显示，不用干等十几秒）
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.send_header('Connection', 'close')       # 没有 Content-Length，HTTP/1.1 只能断开收尾
+        self.end_headers()
+        self.close_connection = True
+
+        parts, alive, err = [], True, ''
+        try:
+            for raw_line in resp:
+                line = raw_line.decode('utf-8', 'replace').strip()
+                if not line.startswith('data:'):
+                    continue
+                data = line[5:].strip()
+                if not data:
+                    continue
+                if data == '[DONE]':
+                    break
+                try:
+                    ev = json.loads(data)
+                except Exception:
+                    continue
+                if ev.get('error'):
+                    err = ai_error_text(502, json.dumps(ev, ensure_ascii=False))
+                    break
+                for ch in (ev.get('choices') or []):
+                    delta = (ch.get('delta') or {}).get('content')
+                    if delta:
+                        parts.append(delta)
+                        if not self.sse({'delta': delta}):
+                            alive = False
+                            break
+                if not alive:
+                    break
+        except (BrokenPipeError, ConnectionResetError):
+            alive = False
+        except Exception as e:
+            err = f'读到一半断了（{type(e).__name__}）'
+        finally:
+            try:
+                resp.close()
+            except Exception:
+                pass
+
+        answer = ''.join(parts)
+        if alive:
+            self.sse({'error': err} if err else {'done': True, 'chars': len(answer),
+                                                 'model': cfg['model']})
+        audit('ai.chat' if answer else 'ai.fail',
+              f'问：{q_prev} · 答 {len(answer)} 字' + (f' · {err}' if err else '')
+              + ('' if alive else ' · 客户端提前断开'),
+              me['name'], ip, ua)
+        return None
 
     def route(self, method, path, body, me, ip, ua):
         # ---------------- 公开 ----------------
@@ -877,10 +1176,70 @@ class Handler(SimpleHTTPRequestHandler):
                 taken += 1
             return {'ok': True, 'taken': taken}, 200, None
 
+        # ---------------- AI 老师 ----------------
+        if path == '/api/ai/status' and method == 'GET':
+            if not me:
+                raise ApiError(401, '请先登录')
+            return ai_status(ai_cfg(), admin=me['role'] == 'admin'), 200, None
+
         if not path.startswith('/api/admin/'):
             raise ApiError(404, '没有这个接口')
 
         # ---------------- 后台 ----------------
+        if path == '/api/admin/ai' and method == 'GET':
+            self.need_admin(me)
+            return ai_status(ai_cfg(), admin=True), 200, None
+
+        if path == '/api/admin/ai' and method == 'POST':
+            self.need_admin(me)
+            patch = {}
+            if 'api_key' in body:
+                k = str(body.get('api_key') or '').strip()
+                if k and (not k.startswith('sk-') or len(k) < 20):
+                    raise ApiError(400, 'DeepSeek 的 Key 一般以 sk- 开头，再核对一下')
+                patch['api_key'] = k
+            if 'model' in body:
+                m = str(body.get('model') or '').strip()
+                if not m or len(m) > 60 or not re.match(r'^[A-Za-z0-9._:-]+$', m):
+                    raise ApiError(400, '模型名只能是字母数字和 . _ : -')
+                patch['model'] = m
+            if 'base_url' in body:
+                b = str(body.get('base_url') or '').strip().rstrip('/')
+                if b and not b.startswith(('https://', 'http://')):
+                    raise ApiError(400, '接口地址要以 http:// 或 https:// 开头')
+                patch['base_url'] = b or AI_DEFAULT_BASE
+            if 'enabled' in body:
+                patch['enabled'] = bool(body['enabled'])
+            if 'clear_key' in body:
+                patch['clear_key'] = bool(body['clear_key'])
+            if 'system' in body:
+                patch['system'] = str(body.get('system') or '')[:1200]
+            if 'max_tokens' in body:
+                try:
+                    patch['max_tokens'] = int(body['max_tokens'])
+                except Exception:
+                    raise ApiError(400, 'max_tokens 要是整数')
+            if 'temperature' in body:
+                try:
+                    patch['temperature'] = float(body['temperature'])
+                except Exception:
+                    raise ApiError(400, 'temperature 要是数字')
+            ai_save(patch)
+            cfg = ai_cfg()
+            said = []
+            if 'api_key' in patch:
+                said.append('Key ' + ('已更新' if patch['api_key'] else '未改'))
+            if 'clear_key' in patch and patch['clear_key']:
+                said.append('Key 已清除')
+            if 'model' in patch:
+                said.append('模型 → ' + patch['model'])
+            if 'enabled' in patch:
+                said.append('开关 → ' + ('开' if patch['enabled'] else '关'))
+            if 'base_url' in patch:
+                said.append('地址 → ' + patch['base_url'])
+            audit('ai.config', '；'.join(said) or '无变化', me['name'], ip, ua)
+            return ai_status(cfg, admin=True), 200, None
+
         if path == '/api/admin/overview':
             self.need_admin(me)
             man = read_manifest()
@@ -1282,6 +1641,63 @@ def cli(argv):
                   f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(f['mtime']))}  "
                   f"→ {os.path.join(ARCHIVE, f['file'])}")
         return 0
+    if cmd == 'ai':
+        cfg = ai_cfg()
+        sub = argv[1] if len(argv) > 1 else 'status'
+        if sub == 'status':
+            print('AI 老师：', '可以用' if ai_status(cfg)['ready'] else '还没配好（' + ai_status(cfg)['reason'] + '）')
+            print('  模型：', cfg['model'])
+            print('  地址：', cfg['base_url'])
+            print('  Key ：', ('…' + cfg['api_key'][-4:]) if cfg['api_key'] else '（空）')
+            print('  开关：', '开' if cfg['enabled'] else '关')
+            print('  档位：', f"max_tokens={cfg['max_tokens']} temperature={cfg['temperature']}")
+            print('  配置：', AICFG)
+            return 0
+        if sub == 'key':
+            if len(argv) < 3:
+                print('用法：python serve.py ai key sk-xxxx')
+                return 1
+            ai_save({'api_key': argv[2].strip()})
+            print('已写入 Key（只落', AICFG, '）')
+            return 0
+        if sub == 'model':
+            if len(argv) < 3:
+                print('用法：python serve.py ai model deepseek-chat')
+                return 1
+            ai_save({'model': argv[2].strip()})
+            print('模型已设为', ai_cfg()['model'])
+            return 0
+        if sub in ('on', 'off'):
+            ai_save({'enabled': sub == 'on'})
+            print('AI 老师已' + ('打开' if sub == 'on' else '关闭'))
+            return 0
+        if sub == 'test':
+            if not cfg['api_key']:
+                print('还没填 Key：python serve.py ai key sk-xxxx')
+                return 1
+            payload = json.dumps({'model': cfg['model'], 'max_tokens': 200, 'stream': False,
+                                  'messages': [{'role': 'system', 'content': AI_SYS},
+                                               {'role': 'user', 'content': '用一句话说说你能帮学生做什么。'}]},
+                                 ensure_ascii=False).encode('utf-8')
+            req = urllib.request.Request(cfg['base_url'] + '/chat/completions', data=payload,
+                                         headers={'Content-Type': 'application/json',
+                                                  'Authorization': 'Bearer ' + cfg['api_key']},
+                                         method='POST')
+            try:
+                with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as r:
+                    j = json.loads(r.read().decode('utf-8', 'replace'))
+                print('通了，模型', j.get('model') or cfg['model'])
+                print('  回答：', (j['choices'][0]['message']['content'] or '').strip())
+                print('  用量：', j.get('usage') or '—')
+                return 0
+            except urllib.error.HTTPError as e:
+                print('失败：', ai_error_text(e.code, e.read().decode('utf-8', 'replace')))
+                return 1
+            except Exception as e:
+                print('失败：', type(e).__name__, e)
+                return 1
+        print('用法：python serve.py ai [status|key <sk-…>|model <名>|on|off|test]')
+        return 1
     if cmd == 'dev':
         os.makedirs(PRIV, exist_ok=True)
         if len(argv) > 1 and argv[1] == 'on':

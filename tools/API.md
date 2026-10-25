@@ -177,6 +177,7 @@
 |---|---|---|
 | 服务端 | `server` | `d` 里是 `动作码 · 详情`，动作码同后台「记录」页（`login.ok` `logout` `user.add` `content.save` `track.delete` `settings` …） |
 | 服务端 | `register` | 自助注册成功 |
+| 服务端 | `ai.chat` `ai.fail` `ai.config` | AI 老师：问答（问的前 80 字 + 回答字数）、失败原因、配置改动 |
 | 前端 | `view` | 进入了某个模块，`d` 形如 `字词 · 停留 42s` |
 | 前端 | `click` | 点了可交互元素，`d` 形如 `播放/暂停 · 播放器` |
 | 前端 | `prefs` | 改了偏好（主题/强调色/字号） |
@@ -208,3 +209,70 @@
 ### POST /api/admin/settings  `{"allow_register": true|false}`
 开关自助注册，返回当前设置。
 
+
+
+## AI 老师（DeepSeek 代理）
+
+右下角「师」那个入口的接口。**Key 只在服务端**（`.private/ai.json`），浏览器永远拿不到；
+所有问答都经服务端转发，并带每人每分钟 / 每天的次数上限，避免公网上被人拿去刷余额。
+
+### 配置（只对管理员开放）
+
+配置文件 `.private/ai.json`（`.private/` 在 `.gitignore` 里）：
+
+```json
+{"api_key":"sk-…","base_url":"https://api.deepseek.com","model":"deepseek-chat",
+ "enabled":true,"temperature":0.6,"max_tokens":1200,"system":""}
+```
+
+- `api_key` 为空时回落环境变量 `DEEPSEEK_API_KEY`。
+- 改完立刻生效（每个请求都重读），不需要重启。
+- 命令行也能配：`python serve.py ai [status] | ai key sk-… | ai model deepseek-chat | ai on|off | ai test`。
+- `ai test` 会真的发一句话，用来验证 Key 和网络通不通。
+
+### GET /api/ai/status（需登录）
+
+```json
+{"ok":true,"ready":true,"enabled":true,"model":"deepseek-chat","reason":""}
+```
+管理员额外拿到 `base_url` `key_tail` `max_tokens` `temperature`。
+`ready:false` 时面板会显示提示条并把发送挡下来（不会发出请求）。
+
+### POST /api/ai/chat（需登录）
+
+```json
+{"messages":[{"role":"user","content":"「池」这个字怎么讲？"}],
+ "context":{"page":"字词","selection":"砚池里存着一汪清水"},
+ "stream":true}
+```
+
+- `messages` 只接受 `user` / `assistant`；**`system` 由服务端拼**，客户端塞不进来。
+- `context.page` / `context.selection` 会作为「此刻的上下文」附在系统提示词尾部
+  （学生说「这段」「这句」时模型能对上原文），两者都裁长度。
+- 单条 ≤ 6000 字，一次最多 30 条，合计 ≤ 24000 字；超了 413。
+- 限流：每人每分钟 20 次、每天 300 次，超了 429（进程内计数，重启清零）。
+
+`stream:true`（默认）返回 `text/event-stream`，且因为不带 Content-Length 会关掉这条连接：
+
+```
+data: {"delta":"「"}
+data: {"delta":"池"}
+data: {"done":true,"chars":38,"model":"deepseek-chat"}
+```
+
+出错时是 JSON（不是 SSE）：
+`503` 没配 Key / 已关闭 · `429` 太频繁 · `502` 连不上 DeepSeek · `401` 上游 Key 无效 · `402` 余额不足 · `400` 模型名不对。
+`stream:false` 则直接返回 `{"ok":true,"answer":"…","model":"…"}`，方便命令行和自检用。
+
+### GET /api/admin/ai · POST /api/admin/ai
+
+`GET` 返回同 `status`（管理员版）。`POST` 接受任意子集：
+
+```json
+{"api_key":"sk-…","model":"deepseek-chat","base_url":"https://api.deepseek.com",
+ "enabled":true,"max_tokens":1200,"temperature":0.6,"system":"","clear_key":false}
+```
+
+- `api_key` 传空字符串表示「不改」，要清空请用 `"clear_key": true`。
+- Key 必须 `sk-` 开头且 ≥ 20 位，否则 400。
+- 改动会写一条 `ai.config` 审计。
