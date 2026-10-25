@@ -166,6 +166,31 @@ await until(() => d.querySelectorAll('#view .rv-item').length > 0);
 const dictN = d.querySelectorAll('#view .rv-item').length;
 ok('期中默写自测：条目数等于数据', dictN === (await (await fetch('content/review9.json')).json()).dictation.length, dictN + ' 题');
 
+/* 5f-2. 按人教社 2024 审定版课本核对：单元归属、整套篇目、有没有旧版残留 */
+const UNITS = await (await fetch('content/units.json')).json();
+const R9 = await (await fetch('content/review9.json')).json();
+const titles = u => u.课文.map(k => k.题);
+ok('第 2 单元是《培养…接班人》那一组（课本第 21 页起）',
+   titles(UNITS[1]).some(t => t.includes('培养德智体美劳')), titles(UNITS[1]).join('、'));
+ok('第 5 单元是《想和做》那一组（课本第 111 页起）',
+   titles(UNITS[4]).some(t => t.includes('想和做')), titles(UNITS[4]).join('、'));
+ok('第 1 单元 6 首诗，含《周总理，你在哪里》', UNITS[0].课文.length === 6 && titles(UNITS[0]).some(t => t.includes('周总理')));
+ok('第 6 单元 5 篇史传诗文，含《陈涉世家》', UNITS[5].课文.length === 5 && titles(UNITS[5]).some(t => t.includes('陈涉世家')));
+const allText = JSON.stringify(UNITS);
+const oldies = ['智取生辰纲', '范进中举', '三顾茅庐', '刘姥姥进大观园', '敬业与乐业', '论教养', '谈创造性思维'];
+const leftOld = oldies.filter(t => allText.includes(t));
+ok('没有旧版篇目残留（古典小说单元 / 敬业与乐业等）', leftOld.length === 0, leftOld.join('、') || '干净');
+ok('第 1 单元已无《艾青诗选》名著导读', !JSON.stringify(UNITS[0]).includes('艾青诗选'));
+ok('每单元都有「阅读综合实践」或活动任务', UNITS.every(u => (u.其他 || []).length >= 1),
+   UNITS.map(u => (u.其他 || []).length).join('/'));
+ok('整本书阅读是《简·爱》《唐诗三百首》',
+   JSON.stringify(UNITS).includes('简·爱') && JSON.stringify(UNITS).includes('唐诗三百首'));
+ok('复习专区已覆盖全册 6 个单元', R9.units.length === 6, R9.units.length + ' 个单元');
+ok('复习专区 28 篇条目、47 句默写、两本整本书', R9.units.reduce((n, u) => n + u.lessons.length, 0) === 28
+   && R9.dictation.length === 47 && R9.books.length === 2,
+   `${R9.units.reduce((n, u) => n + u.lessons.length, 0)} 篇 / ${R9.dictation.length} 句 / ${R9.books.length} 本`);
+ok('复习专区不再有《艾青诗选》', !JSON.stringify(R9).includes('艾青诗选'));
+
 /* 填对第一空 → 判正确；填错第二空 → 判错误并给出答案 */
 const it1 = d.querySelectorAll('#view .rv-item')[0];
 it1.querySelector('[data-input]').value = (await (await fetch('content/review9.json')).json()).dictation[0].a;
@@ -182,6 +207,13 @@ ok('默写：进度写进本机存储', Object.keys(JSON.parse(w.localStorage.ge
 d.querySelector('#view [data-reset]').click();
 await sleep(150);
 ok('默写：重做清空', d.querySelector('#view .rv-item [data-input]').value === '');
+
+const bookTab = [...d.querySelectorAll('#view .rv-tabs button')].find(b => b.textContent.includes('整本书'));
+bookTab.click();
+await until(() => d.querySelectorAll('#view .rv-det').length > 0);
+ok('期中「整本书」分区：两本书 5 道自测', d.querySelectorAll('#view .rv-poem__t').length === 2
+   && d.querySelectorAll('#view .rv-det').length === 5,
+   `${d.querySelectorAll('#view .rv-poem__t').length} 本 / ${d.querySelectorAll('#view .rv-det').length} 道`);
 
 w.location.hash = '#/zhongkao';
 await until(() => text().includes('中考语文复习') && d.querySelectorAll('.rv-tabs button').length === 6);

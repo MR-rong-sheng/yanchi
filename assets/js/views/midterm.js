@@ -12,7 +12,7 @@ const TABS = [
   { id: 'dict',   label: '默写自测', icon: 'write' },
   { id: 'wenyan', label: '文言突破', icon: 'poems' },
   { id: 'poem',   label: '诗歌鉴赏', icon: 'poems' },
-  { id: 'book',   label: '名著',     icon: 'notes' },
+  { id: 'book',   label: '整本书',   icon: 'notes' },
   { id: 'read',   label: '阅读方法', icon: 'search' },
   { id: 'write',  label: '作文',     icon: 'edit' },
 ];
@@ -34,11 +34,12 @@ export default {
         <div class="kicker">复习专区 · ${esc(d.meta.range)}</div>
         <h2>九上期中复习</h2>
         <p>${esc(d.meta.basis)}</p>
+        <p style="margin-top:6px;color:var(--ink-3);font-size:12.5px">
+          第 1—3 单元是期中范围；第 4—6 单元（小说、第二组议论文、史传文言）也已一并收进来，期末复习可以直接往下用。
+        </p>
         <div class="chips">
-          <span class="chip chip--accent">第 1 单元 · 诗歌</span>
-          <span class="chip chip--accent">第 2 单元 · 议论性文章</span>
-          <span class="chip chip--accent">第 3 单元 · 文言与诗词</span>
-          <span class="chip">名著《艾青诗选》</span>
+          ${d.units.map((u, i) => `<span class="chip ${i < 3 ? 'chip--accent' : ''}">${esc(u.名)}</span>`).join('')}
+          <span class="chip">整本书阅读 · ${d.books.map(b => esc(b.书)).join('、')}</span>
         </div>
       </section>
 
@@ -123,7 +124,7 @@ export default {
         </div>
 
         <div class="card glass" style="margin-top:16px">
-          <div class="card__label">七天计划 · 每天 40 分钟（勾选记在本机）</div>
+          <div class="card__label">${d.plan.length} 天计划 · 每天 40 分钟（勾选记在本机）</div>
           <div class="rv-plan" data-plan>
             ${d.plan.map((p, i) => `
               <label class="rv-day ${plan[i] ? 'is-done' : ''}">
@@ -187,6 +188,7 @@ export default {
           <div class="card__label">默写自测 · ${d.dictation.length} 题</div>
           <p class="quote">先自己写，再对答案。判分只看字，不看标点：标点写不写都算对，字写错就算错。</p>
           <p class="rv-tip">只写空缺部分就行。例如「衔远山，吞长江，____，____」，填「浩浩汤汤，横无际涯」。</p>
+          <p class="rv-tip">前 28 题是第 1—3 单元（旧版期中范围），后 19 题是第 4—6 单元；只考前三单元的话，后面可以先放着。</p>
         </div>
         <div data-quiz></div>`;
     }
@@ -289,58 +291,36 @@ export default {
     }
 
     function bookHTML() {
-      const b = d.book;
       return `
-        <div class="card glass">
-          <div class="card__label">${esc(b.书)} · ${esc(b.author)}</div>
-          <p class="quote">${esc(b.why)}</p>
+        <div class="card glass" style="margin-bottom:16px">
+          <div class="card__label">整本书阅读 · 两本</div>
+          <p class="quote">新版教材把「名著导读」改成了「整本书阅读」，每册推荐两本：九上是《简·爱》与《唐诗三百首》。
+             旧版九上的《艾青诗选》《水浒传》已经不在这一册里了。</p>
         </div>
-
-        <div class="grid grid--3" style="margin-top:16px">
-          ${b.stages.map(s => `
-            <div class="card glass">
-              <div class="card__label">${esc(s.期)}</div>
-              <div class="chips">${s.作.map(x => `<span class="chip">${esc(x)}</span>`).join('')}</div>
-              <p class="rv-emotion" style="margin-top:10px;font-size:13px">${esc(s.点)}</p>
-            </div>`).join('')}
-        </div>
-
-        <div class="card glass" style="margin-top:16px">
-          <div class="card__label">意象表</div>
-          <div class="rv-table">
-            <table>
-              <thead><tr><th>意象</th><th>象征</th><th>例</th></tr></thead>
-              <tbody>
-                ${b.imagery.map(x => `<tr><td class="rv-word">${esc(x.象)}</td><td>${esc(x.义)}</td><td class="rv-eg">${esc(x.例)}</td></tr>`).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="grid grid--2" style="margin-top:16px">
-          <div class="card glass">
-            <div class="card__label">诗论与读法</div>
-            ${listCard('', b.poetics)}
-          </div>
-          <div class="card glass">
-            <div class="card__label">考点清单</div>
-            ${listCard('', b.kaodian)}
-          </div>
-        </div>
-
-        <div class="card glass" style="margin-top:16px">
-          <div class="card__label">自测 · 先自己说一遍，再展开</div>
-          <div class="rv-dets">
-            ${b.quiz.map((q, i) => `
-              <details class="rv-det">
-                <summary>
-                  <span class="rv-det__t">${i + 1}. ${esc(q.q)}</span>
-                  <span class="rv-det__go">${ic('down')}</span>
-                </summary>
-                <div class="rv-det__body"><p class="rv-quote">${esc(q.a)}</p></div>
-              </details>`).join('')}
-          </div>
-        </div>`;
+        ${d.books.map(b => `
+          <div class="card glass" style="margin-bottom:16px">
+            <div class="card__label">${esc(b.tag)}</div>
+            <div class="rv-poem__head" style="margin-bottom:8px">
+              <div>
+                <div class="rv-poem__t">${esc(b.书)}</div>
+                <div class="rv-poem__s">${esc(b.作者)}</div>
+              </div>
+            </div>
+            <p class="rv-emotion" style="font-size:13.5px;font-weight:400">${esc(b.point)}</p>
+            ${listCard('要记住的', b.keys)}
+            ${listCard('考点', b.kao)}
+            <div class="card__label" style="margin-top:14px">自测 · 先自己说一遍，再展开</div>
+            <div class="rv-dets">
+              ${b.quiz.map((q, i) => `
+                <details class="rv-det">
+                  <summary>
+                    <span class="rv-det__t">${i + 1}. ${esc(q.q)}</span>
+                    <span class="rv-det__go">${ic('down')}</span>
+                  </summary>
+                  <div class="rv-det__body"><p class="rv-quote">${esc(q.a)}</p></div>
+                </details>`).join('')}
+            </div>
+          </div>`).join('')}`;
     }
 
     function readHTML() {
