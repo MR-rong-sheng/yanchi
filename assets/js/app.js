@@ -13,7 +13,7 @@ import today    from './views/today.js?v=20261007d';
 import units    from './views/units.js';
 import words    from './views/words.js?v=20261007d';
 import poems    from './views/poems.js';
-import midterm  from './views/midterm.js?v=20261025';
+import midterm  from './views/midterm.js?v=20261025e';
 import zhongkao from './views/zhongkao.js?v=20261025';
 import finalRev from './views/final.js?v=20261025';
 import write    from './views/write.js';
